@@ -1,0 +1,15 @@
+{
+  "dart.analysisExcludedFolders": [
+    "flutter",
+    "build",
+    ".dart_tool",
+    "ios/Pods",
+    "macos/Pods",
+    "backend"
+  ],
+  "files.watcherExclude": {
+    "**/flutter/**": true,
+    "**/build/**": true,
+    "**/.dart_tool/**": true
+  }
+}

@@ -1,0 +1,11 @@
+// DEPRECATED: La base de datos activa es MongoDB (ver src/models/).
+// Este archivo se mantiene solo como referencia histórica.
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}

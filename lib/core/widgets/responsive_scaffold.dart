@@ -1,0 +1,366 @@
+import 'package:flutter/material.dart';
+import '../auth/app_session.dart';
+import '../navigation/app_navigation.dart';
+import '../navigation/app_routes.dart';
+import '../theme/app_colors.dart';
+
+/// A responsive scaffold that adapts its navigation UI based on screen width.
+/// Supports optional AppBar, custom background color, and full‑screen
+/// pages via `hideNavigation` (e.g., video call).
+class ResponsiveScaffold extends StatefulWidget {
+  final Widget? title;
+  final List<Widget>? actions;
+  final PreferredSizeWidget? appBar;
+  final bool hideNavigation;
+  final Color? backgroundColor;
+  final Widget? child;
+  final Widget? body;
+  final Widget? floatingActionButton;
+  final Widget? bottomNavigationBar;
+
+  const ResponsiveScaffold({
+    super.key,
+    this.title,
+    this.actions,
+    this.appBar,
+    this.hideNavigation = false,
+    this.backgroundColor,
+    this.child,
+    this.body,
+    this.floatingActionButton,
+    this.bottomNavigationBar,
+  });
+
+  @override
+  State<ResponsiveScaffold> createState() => _ResponsiveScaffoldState();
+}
+
+class _ResponsiveScaffoldState extends State<ResponsiveScaffold> {
+  void _navigateTo(String route) {
+    final currentRoute = AppRoutes.normalize(
+      ModalRoute.of(context)?.settings.name,
+    );
+    final targetRoute = AppRoutes.normalize(route);
+
+    if (currentRoute == targetRoute) return;
+    Navigator.of(context).pushReplacementNamed(route);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final double width = MediaQuery.of(context).size.width;
+    final String currentRoute = AppRoutes.normalize(
+      ModalRoute.of(context)?.settings.name,
+    );
+    final bool canViewRoute =
+        widget.hideNavigation ||
+        AppRoutes.isAllowedForRole(currentRoute, AppSession.activeRole);
+    final Widget pageContent = canViewRoute
+        ? widget.body ?? widget.child ?? const SizedBox.shrink()
+        : const _AccessDeniedView();
+
+    // Optional AppBar.
+    final PreferredSizeWidget? resolvedAppBar =
+        widget.appBar ??
+        ((widget.title != null || widget.actions != null)
+            ? AppBar(title: widget.title, actions: widget.actions)
+            : widget.hideNavigation
+            ? null
+            : AppBar(title: Text(AppRoutes.titleFor(currentRoute))));
+
+    // Full‑screen pages – hide navigation.
+    if (widget.hideNavigation) {
+      return Scaffold(
+        appBar: resolvedAppBar,
+        backgroundColor: widget.backgroundColor,
+        body: pageContent,
+        floatingActionButton: widget.floatingActionButton,
+        bottomNavigationBar: widget.bottomNavigationBar,
+      );
+    }
+
+    // Mobile layout.
+    if (width < 600) {
+      final destinations = AppRoutes.mobileDestinationsForRole(
+        AppSession.activeRole,
+      );
+      final selectedIndex = destinations.indexWhere(
+        (destination) => destination.path == currentRoute,
+      );
+
+      return Scaffold(
+        appBar: resolvedAppBar,
+        backgroundColor: widget.backgroundColor,
+        body: pageContent,
+        floatingActionButton: widget.floatingActionButton,
+        bottomNavigationBar:
+            widget.bottomNavigationBar ??
+            (destinations.isEmpty
+                ? null
+                : NavigationBar(
+                    selectedIndex: selectedIndex == -1 ? 0 : selectedIndex,
+                    onDestinationSelected: (index) {
+                      _navigateTo(destinations[index].path);
+                    },
+                    destinations: destinations
+                        .map(
+                          (destination) => NavigationDestination(
+                            icon: Icon(destination.icon),
+                            label: destination.label,
+                          ),
+                        )
+                        .toList(),
+                  )),
+      );
+    }
+
+    final destinations = AppRoutes.destinationsForRole(AppSession.activeRole);
+    final selectedIndex = destinations.indexWhere(
+      (destination) => destination.path == currentRoute,
+    );
+    final isExtended = width >= 1200;
+    final rail = Material(
+      color: AppColors.primaryDark,
+      child: SizedBox(
+        width: isExtended ? 260 : 92,
+        child: SafeArea(
+          child: ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: destinations.length + 2,
+            separatorBuilder: (_, index) => index == 0
+                ? const SizedBox(height: 18)
+                : const SizedBox(height: 6),
+            itemBuilder: (context, index) {
+              if (index == 0) {
+                return _SidebarBrand(isExtended: isExtended);
+              }
+
+              if (index == destinations.length + 1) {
+                return _SidebarLogout(isExtended: isExtended);
+              }
+
+              final destination = destinations[index - 1];
+              final isSelected = index - 1 == selectedIndex;
+
+              if (!isExtended) {
+                return Tooltip(
+                  message: destination.label,
+                  child: IconButton(
+                    isSelected: isSelected,
+                    style: IconButton.styleFrom(
+                      backgroundColor: isSelected
+                          ? Colors.white.withValues(alpha: 0.16)
+                          : Colors.transparent,
+                      foregroundColor: isSelected
+                          ? Colors.white
+                          : Colors.white.withValues(alpha: 0.62),
+                      fixedSize: const Size(56, 48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    onPressed: () => _navigateTo(destination.path),
+                    icon: Icon(destination.icon),
+                  ),
+                );
+              }
+
+              return Material(
+                color: Colors.transparent,
+                child: ListTile(
+                  selected: isSelected,
+                  selectedTileColor: Colors.white.withValues(alpha: 0.14),
+                  selectedColor: Colors.white,
+                  iconColor: isSelected
+                      ? Colors.white
+                      : Colors.white.withValues(alpha: 0.62),
+                  textColor: isSelected
+                      ? Colors.white
+                      : Colors.white.withValues(alpha: 0.72),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  leading: Icon(destination.icon),
+                  title: Text(
+                    destination.label,
+                    style: TextStyle(
+                      fontWeight:
+                          isSelected ? FontWeight.w800 : FontWeight.w600,
+                    ),
+                  ),
+                  onTap: () => _navigateTo(destination.path),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+
+    return Scaffold(
+      appBar: resolvedAppBar,
+      backgroundColor: widget.backgroundColor,
+      floatingActionButton: widget.floatingActionButton,
+      bottomNavigationBar: widget.bottomNavigationBar,
+      body: Row(
+        children: [
+          rail,
+          Expanded(child: pageContent),
+        ],
+      ),
+    );
+  }
+}
+
+class _SidebarBrand extends StatelessWidget {
+  final bool isExtended;
+
+  const _SidebarBrand({required this.isExtended});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: isExtended
+          ? MainAxisAlignment.start
+          : MainAxisAlignment.center,
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.14),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: const Icon(Icons.favorite_rounded, color: Colors.white),
+        ),
+        if (isExtended) ...[
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'VITA OS',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                Text(
+                  'Smart Medic',
+                  style: TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _SidebarLogout extends StatelessWidget {
+  final bool isExtended;
+
+  const _SidebarLogout({required this.isExtended});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!isExtended) {
+      return Tooltip(
+        message: 'Cerrar sesión',
+        child: IconButton(
+          style: IconButton.styleFrom(
+            foregroundColor: Colors.white.withValues(alpha: 0.72),
+          ),
+          onPressed: () => _logout(context),
+          icon: const Icon(Icons.logout_rounded),
+        ),
+      );
+    }
+
+    return Material(
+      color: Colors.transparent,
+      child: ListTile(
+        iconColor: Colors.white.withValues(alpha: 0.72),
+        textColor: Colors.white.withValues(alpha: 0.72),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        leading: const Icon(Icons.logout_rounded),
+        title: const Text('Cerrar sesión'),
+        onTap: () => _logout(context),
+      ),
+    );
+  }
+
+  void _logout(BuildContext context) {
+    AppSession.clear();
+    Navigator.pushReplacementNamed(context, AppRoutes.login);
+  }
+}
+
+class _AccessDeniedView extends StatelessWidget {
+  const _AccessDeniedView();
+
+  @override
+  Widget build(BuildContext context) {
+    final homeRoute = AppRoutes.normalize(
+      AppNavigation.homeRouteForRole(AppSession.activeRole),
+    );
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 76,
+                height: 76,
+                decoration: BoxDecoration(
+                  color: AppColors.emergencyLight,
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: const Icon(
+                  Icons.lock_outline_rounded,
+                  color: AppColors.emergency,
+                  size: 36,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Vista no disponible para este rol',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.headlineMedium,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Esta sección no está habilitada para tu perfil actual.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 24),
+              FilledButton.icon(
+                onPressed: () =>
+                    Navigator.pushReplacementNamed(context, homeRoute),
+                icon: const Icon(Icons.home_rounded),
+                label: const Text('Ir al inicio'),
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: () {
+                  AppSession.clear();
+                  Navigator.pushReplacementNamed(context, AppRoutes.login);
+                },
+                icon: const Icon(Icons.login_rounded),
+                label: const Text('Cambiar de cuenta'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
