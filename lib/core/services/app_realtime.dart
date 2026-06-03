@@ -165,7 +165,7 @@ class AppRealtime {
     final active = ActiveCallService.instance;
     if (active.hasActiveCall) {
       if (active.conversationId == event.conversationId) {
-        developer.log('incoming misma conv — expandir llamada', name: _logName);
+        developer.log('incoming misma conv — volver a llamada', name: _logName);
         active.expandToFullScreen();
         return;
       }
@@ -208,11 +208,11 @@ class AppRealtime {
     if (!restoreSession && active.blocksNewCall(conversationId)) {
       if (active.conversationId == conversationId) {
         active.expandToFullScreen();
-        return;
+      } else {
+        active.notifyBusyAndReturnToCall();
       }
-      _showAlreadyInCallSnack(active.peerName);
       developer.log(
-        'llamada bloqueada: activa con ${active.peerName}',
+        'bloqueada nueva llamada — activa con ${active.peerName}',
         name: _logName,
       );
       return;
@@ -237,24 +237,6 @@ class AppRealtime {
       if (root == null) return;
       root.pushNamed(AppRoutes.videoCall, arguments: args);
     });
-  }
-
-  static void _showAlreadyInCallSnack(String peerName) {
-    final ctx = navigatorKey?.currentContext;
-    if (ctx == null || !ctx.mounted) return;
-    ScaffoldMessenger.of(ctx).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Ya estás en llamada con $peerName. '
-          'Cuelga o vuelve a la llamada desde la barra inferior antes de llamar a otro contacto.',
-        ),
-        duration: const Duration(seconds: 5),
-        action: SnackBarAction(
-          label: 'Volver',
-          onPressed: ActiveCallService.instance.expandToFullScreen,
-        ),
-      ),
-    );
   }
 
   static void _tryShowPendingIncomingCall() {

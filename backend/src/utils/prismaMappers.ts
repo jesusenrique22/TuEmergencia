@@ -1,4 +1,8 @@
 import { Prisma } from '@prisma/client';
+import {
+  appointmentNeedsClosure,
+  mapConsultationReport,
+} from '../services/consultationReport.service';
 import { toApiDoc } from './apiDoc';
 
 export const doctorProfileInclude = {
@@ -34,6 +38,7 @@ export const appointmentInclude = {
   },
   facility: true,
   specialty: true,
+  consultationReport: true,
 } satisfies Prisma.AppointmentInclude;
 
 export type AppointmentWithRelations = Prisma.AppointmentGetPayload<{
@@ -41,12 +46,18 @@ export type AppointmentWithRelations = Prisma.AppointmentGetPayload<{
 }>;
 
 export function mapAppointment(appointment: AppointmentWithRelations) {
+  const { consultationReport, ...rest } = appointment;
+
   return toApiDoc({
-    ...appointment,
+    ...rest,
     patientId: appointment.patient ? toApiDoc(appointment.patient) : appointment.patientId,
     doctorId: appointment.doctor ? toApiDoc(appointment.doctor) : appointment.doctorId,
     facilityId: appointment.facility ? toApiDoc(appointment.facility) : appointment.facilityId,
     specialtyId: appointment.specialty ? toApiDoc(appointment.specialty) : appointment.specialtyId,
+    consultationReport: consultationReport
+      ? mapConsultationReport(consultationReport)
+      : null,
+    needsClosure: appointmentNeedsClosure(appointment),
   });
 }
 

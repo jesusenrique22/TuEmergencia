@@ -1,4 +1,5 @@
 import '../../../../core/utils/appointment_datetime.dart';
+import 'consultation_report.dart';
 
 enum AppointmentStatus { pending, confirmed, completed, cancelled }
 
@@ -80,6 +81,8 @@ class Appointment {
   final String? facilityAddress;
   final int? patientRating;
   final String? patientReview;
+  final ConsultationReport? consultationReport;
+  final bool needsClosure;
 
   const Appointment({
     required this.id,
@@ -103,7 +106,15 @@ class Appointment {
     this.facilityAddress,
     this.patientRating,
     this.patientReview,
+    this.consultationReport,
+    this.needsClosure = false,
   });
+
+  bool get hasConsultationReport => consultationReport != null;
+
+  bool get patientNeedsToAcknowledge =>
+      hasConsultationReport &&
+      consultationReport!.patientAcknowledged == false;
 
   bool get canRate =>
       status == AppointmentStatus.completed && patientRating == null;
@@ -153,6 +164,12 @@ class Appointment {
       facilityAddress: facility?.address,
       patientRating: (j['patientRating'] as num?)?.toInt(),
       patientReview: j['patientReview'] as String?,
+      consultationReport: j['consultationReport'] is Map
+          ? ConsultationReport.fromJson(
+              Map<String, dynamic>.from(j['consultationReport'] as Map),
+            )
+          : null,
+      needsClosure: j['needsClosure'] == true,
     );
   }
 }

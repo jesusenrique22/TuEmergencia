@@ -26,21 +26,35 @@ export async function assertConversationParticipant(conversationId: string, user
 export async function createChatMessage(params: {
   conversationId: string;
   senderId: string;
-  text: string;
+  text?: string;
+  imageUrl?: string | null;
   kind?: ChatMessageKind;
 }) {
-  const { conversationId, senderId, text } = params;
+  const { conversationId, senderId } = params;
   const kind: ChatMessageKind = params.kind === 'clinical' ? 'clinical' : 'chat';
-  const trimmed = String(text).trim();
-  if (!trimmed) {
+  const trimmed = String(params.text ?? '').trim();
+  const imageUrl = params.imageUrl?.trim() || null;
+
+  if (!trimmed && !imageUrl) {
     throw new Error('El mensaje no puede estar vacío');
+  }
+  if (imageUrl && kind === 'clinical') {
+    throw new Error('Las imágenes solo se envían en el chat, no en indicaciones clínicas');
   }
 
   const conversation = await assertConversationParticipant(conversationId, senderId);
   await assertDoctorPatientCanCommunicate(conversation.doctorId, conversation.patientId);
 
+  const preview = imageUrl ? (trimmed || '📷 Foto') : trimmed;
+
   const message = await prisma.chatMessage.create({
-    data: { conversationId, senderId, text: trimmed, kind },
+    data: {
+      conversationId,
+      senderId,
+      text: trimmed,
+      imageUrl,
+      kind,
+    },
     include: { sender: true },
   });
 
@@ -48,15 +62,15 @@ export async function createChatMessage(params: {
   if (kind === 'clinical') {
     await prisma.chatConversation.update({
       where: { id: conversationId },
-      data: { lastClinicalMessage: trimmed, lastClinicalMessageAt: now },
+      data: { lastClinicalMessage: preview, lastClinicalMessageAt: now },
     });
   } else {
     await prisma.chatConversation.update({
       where: { id: conversationId },
       data: {
-        lastChatMessage: trimmed,
+        lastChatMessage: preview,
         lastChatMessageAt: now,
-        lastMessage: trimmed,
+        lastMessage: preview,
         lastMessageAt: now,
       },
     });
@@ -70,7 +84,7 @@ export async function createChatMessage(params: {
     recipientId,
     senderId,
     senderName,
-    text: trimmed,
+    text: preview,
     conversationId: conversation.id,
   });
 
@@ -82,5 +96,6 @@ export async function createChatMessage(params: {
     message: mapChatMessage(message),
     conversation: updatedConversation,
     kind,
+    preview,
   };
 }

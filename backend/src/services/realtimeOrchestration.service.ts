@@ -89,12 +89,18 @@ export function buildMessageBroadcasts(
 
 export async function handleSocketMessageSend(
   userId: string,
-  payload: { conversationId: string; text: string; kind?: 'chat' | 'clinical' },
+  payload: {
+    conversationId: string;
+    text: string;
+    kind?: 'chat' | 'clinical';
+    imageUrl?: string;
+  },
 ): Promise<RealtimeHandlerResult> {
-  const { message, conversation, kind } = await createChatMessage({
+  const { message, conversation, kind, preview } = await createChatMessage({
     conversationId: payload.conversationId,
     senderId: userId,
     text: payload.text,
+    imageUrl: payload.imageUrl,
     kind: payload.kind,
   });
 
@@ -104,7 +110,7 @@ export async function handleSocketMessageSend(
     message,
     kind,
     conversation,
-    payload.text.trim(),
+    preview,
   );
 
   return {

@@ -204,6 +204,13 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
         color: AppColors.info,
       ),
       _DashboardAction(
+        icon: Icons.upload_file_rounded,
+        title: 'Compartir exámenes',
+        subtitle: 'Laboratorio, rayos X y PDF para tu médico',
+        route: AppRoutes.patientShareExams,
+        color: AppColors.primary,
+      ),
+      _DashboardAction(
         icon: Icons.assignment_ind_rounded,
         title: 'Mi perfil médico',
         subtitle: 'Datos personales y clínicos',
@@ -213,7 +220,7 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
       _DashboardAction(
         icon: Icons.history_edu_rounded,
         title: 'Historial clínico',
-        subtitle: 'Recetas, visitas y alergias',
+        subtitle: 'Visitas, antecedentes y recetas',
         route: AppRoutes.medicalHistory,
         color: AppColors.accent,
       ),
@@ -352,6 +359,14 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
             profile?.allergies ?? 'Sin registrar',
           ),
           const SizedBox(height: 14),
+          FilledButton.icon(
+            style: _dashboardButtonStyle(outlined: false),
+            onPressed: () =>
+                Navigator.pushNamed(context, AppRoutes.patientShareExams),
+            icon: const Icon(Icons.upload_file_rounded, size: 18),
+            label: const Text('Subir exámenes para mi médico'),
+          ),
+          const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
@@ -365,8 +380,8 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: FilledButton.tonalIcon(
-                  style: _dashboardButtonStyle(outlined: false),
+                child: OutlinedButton.icon(
+                  style: _dashboardButtonStyle(outlined: true),
                   onPressed: () =>
                       Navigator.pushNamed(context, AppRoutes.medicalHistory),
                   icon: const Icon(Icons.history_edu_rounded, size: 18),

@@ -34,6 +34,7 @@ class AppRoutes {
   static const String insurance = '/insurance';
   static const String pharmacy = '/pharmacy';
   static const String medicalHistory = '/medical_history';
+  static const String patientShareExams = '/patient_share_exams';
   static const String doctorDashboard = '/doctor_dashboard';
   static const String doctorSchedule = '/doctor_schedule';
   static const String doctorProfile = '/doctor_profile';
@@ -144,6 +145,12 @@ class AppRoutes {
       label: 'Historial',
       icon: Icons.history_edu_rounded,
       roles: {Role.patient, Role.doctor},
+    ),
+    AppRouteDestination(
+      path: patientShareExams,
+      label: 'Exámenes',
+      icon: Icons.upload_file_rounded,
+      roles: {Role.patient},
     ),
     AppRouteDestination(
       path: messages,
@@ -313,6 +320,7 @@ class AppRoutes {
     if (role == Role.patient) {
       const essentialPatientRoutes = [
         dashboard,
+        patientShareExams,
         patientProfile,
         schedule,
         appointments,
@@ -352,6 +360,12 @@ class AppRoutes {
           label: 'Citas',
           icon: Icons.event_note_rounded,
           roles: {Role.patient, Role.doctor},
+        ),
+        AppRouteDestination(
+          path: patientShareExams,
+          label: 'Exámenes',
+          icon: Icons.upload_file_rounded,
+          roles: {Role.patient},
         ),
         AppRouteDestination(
           path: patientProfile,
@@ -473,6 +487,8 @@ class AppRoutes {
         return 'Catálogo de exámenes';
       case labRegisterExam:
         return 'Registrar examen';
+      case patientShareExams:
+        return 'Compartir exámenes';
       default:
         return destinationFor(route)?.label ?? 'VITA OS';
     }
@@ -501,6 +517,7 @@ class AppRoutes {
     insurance: (_) => const InsurancePage(),
     pharmacy: (_) => const PharmacyPage(),
     medicalHistory: (_) => const MedicalHistoryPage(),
+    patientShareExams: (_) => const PatientShareExamsPage(),
     doctorDashboard: (_) => const DoctorDashboard(),
     doctorSchedule: (_) => const DoctorSchedulePage(),
     doctorProfile: (_) => const DoctorProfilePage(),

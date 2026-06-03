@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import {
+  acknowledgeConsultationReport,
   createAppointment,
   getAppointmentById,
   cancelAppointment,
@@ -20,5 +21,10 @@ router.post(
 router.get('/:id', getAppointmentById);
 router.patch('/:id/cancel', cancelAppointment);
 router.post('/:id/rate', authorize(UserRole.PATIENT), rateAppointment);
+router.post(
+  '/:id/acknowledge-report',
+  authorize(UserRole.PATIENT),
+  acknowledgeConsultationReport,
+);
 
 export default router;

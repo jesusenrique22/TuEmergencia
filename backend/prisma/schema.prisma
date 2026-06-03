@@ -42,6 +42,7 @@ model User {
   chatMessages        ChatMessage[]
   medicalHistory      MedicalHistory?
   historyEntries      MedicalHistoryEntry[]
+  medicalDocuments    PatientMedicalDocument[]
   pharmacyOrders      PharmacyOrder[]
 
   @@index([role])
@@ -242,10 +243,30 @@ model Appointment {
   doctor    User             @relation("DoctorAppointments", fields: [doctorId], references: [id])
   facility  MedicalFacility? @relation(fields: [facilityId], references: [id])
   specialty Specialty?       @relation(fields: [specialtyId], references: [id])
+  consultationReport AppointmentConsultationReport?
 
   @@index([doctorId, dateTime])
   @@index([patientId, dateTime])
   @@map("appointments")
+}
+
+model AppointmentConsultationReport {
+  id                    String    @id @default(cuid())
+  appointmentId         String    @unique @map("appointment_id")
+  findings              String
+  diagnosis             String
+  medications           String    @default("")
+  instructions          String
+  noMedication          Boolean   @default(false) @map("no_medication")
+  attachmentUrls        String[]  @default([]) @map("attachment_urls")
+  templateId            String?   @map("template_id")
+  patientAcknowledgedAt DateTime? @map("patient_acknowledged_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@map("appointment_consultation_reports")
 }
 
 model MedicalHistory {
@@ -283,6 +304,24 @@ model MedicalHistoryEntry {
   doctor         User?          @relation(fields: [doctorId], references: [id])
 
   @@map("medical_history_entries")
+}
+
+model PatientMedicalDocument {
+  id        String   @id @default(cuid())
+  patientId String   @map("patient_id")
+  category  String
+  title     String
+  notes     String?
+  fileName  String   @map("file_name")
+  mimeType  String   @map("mime_type")
+  fileUrl   String   @map("file_url")
+  fileSize  Int      @map("file_size")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  patient User @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId, createdAt(sort: Desc)])
+  @@map("patient_medical_documents")
 }
 
 model ClinicInvitation {
@@ -328,7 +367,8 @@ model ChatMessage {
   id             String    @id @default(cuid())
   conversationId String    @map("conversation_id")
   senderId       String    @map("sender_id")
-  text           String
+  text           String    @default("")
+  imageUrl       String?   @map("image_url")
   kind           String    @default("chat")
   readAt         DateTime? @map("read_at")
   createdAt      DateTime  @default(now()) @map("created_at")

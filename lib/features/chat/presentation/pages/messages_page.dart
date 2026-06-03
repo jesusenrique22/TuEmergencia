@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../../../core/auth/app_session.dart';
 import '../../../../core/config/api_config.dart';
 import '../../../../core/debug/dev_tools_config.dart';
@@ -15,6 +16,7 @@ import '../../../../core/widgets/responsive_scaffold.dart';
 import '../../../../core/widgets/safe_avatar.dart';
 import '../../../auth/domain/models/role.dart';
 import '../../data/chat_api_service.dart';
+import '../../utils/chat_media_url.dart';
 
 /// Mensajería paciente–médico: pestaña Chats (bidireccional) e Historial clínico.
 class MessagesPage extends StatefulWidget {
@@ -28,6 +30,7 @@ class _MessagesPageState extends State<MessagesPage>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   final _chat = ChatApiService();
+  final _imagePicker = ImagePicker();
 
   List<ChatConversationItem> _conversations = [];
   ChatConversationItem? _activeChat;
@@ -323,6 +326,103 @@ class _MessagesPageState extends State<MessagesPage>
     }
   }
 
+  Future<void> _pickAndSendImage() async {
+    final conv = _activeChat;
+    if (conv == null || _sending) return;
+
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library_rounded),
+              title: const Text('Galería'),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_camera_rounded),
+              title: const Text('Cámara'),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null || !mounted) return;
+
+    final file = await _imagePicker.pickImage(
+      source: source,
+      imageQuality: 82,
+      maxWidth: 2048,
+    );
+    if (file == null || !mounted) return;
+
+    setState(() => _sending = true);
+    try {
+      final bytes = await file.readAsBytes();
+      final caption = _textController.text.trim();
+      final message = await _chat.sendMessage(
+        conversationId: conv.id,
+        text: caption,
+        imageBytes: bytes,
+        imageMimeType: _mimeFromFileName(file.name),
+      );
+      _textController.clear();
+      if (!_chatMessages.any((m) => m.id == message.id)) {
+        setState(() => _chatMessages = [..._chatMessages, message]);
+      }
+      await _loadChats();
+      _scrollToBottom();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No se pudo enviar la imagen'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  String _mimeFromFileName(String name) {
+    final lower = name.toLowerCase();
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    if (lower.endsWith('.gif')) return 'image/gif';
+    return 'image/jpeg';
+  }
+
+  void _openImagePreview(String imageUrl) {
+    final url = chatMediaFullUrl(imageUrl);
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        child: InteractiveViewer(
+          child: Image.network(
+            url,
+            fit: BoxFit.contain,
+            errorBuilder: (_, _, _) => Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(url),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _showNewChatSheet() async {
     try {
       final contacts = await _chat.listContactsForNewChat();
@@ -425,24 +525,12 @@ class _MessagesPageState extends State<MessagesPage>
     final conv = _activeChat;
     if (conv == null) return;
 
-    if (ActiveCallService.instance.hasActiveCall) {
-      final active = ActiveCallService.instance;
+    final active = ActiveCallService.instance;
+    if (active.hasActiveCall) {
       if (active.conversationId == conv.id) {
         active.expandToFullScreen();
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Ya estás en llamada con ${active.peerName}. '
-              'Cuelga antes de llamar a otro contacto.',
-            ),
-            duration: const Duration(seconds: 4),
-            action: SnackBarAction(
-              label: 'Volver',
-              onPressed: active.expandToFullScreen,
-            ),
-          ),
-        );
+        active.notifyBusyAndReturnToCall();
       }
       return;
     }
@@ -781,13 +869,58 @@ class _MessagesPageState extends State<MessagesPage>
               crossAxisAlignment:
                   mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
               children: [
-                Text(
-                  m.text,
-                  style: TextStyle(
-                    color: mine ? Colors.white : AppColors.textPrimary,
-                    height: 1.35,
+                if (m.hasImage) ...[
+                  GestureDetector(
+                    onTap: () => _openImagePreview(m.imageUrl!),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.network(
+                        chatMediaFullUrl(m.imageUrl),
+                        width: 220,
+                        fit: BoxFit.cover,
+                        loadingBuilder: (_, child, progress) {
+                          if (progress == null) return child;
+                          return SizedBox(
+                            width: 220,
+                            height: 160,
+                            child: Center(
+                              child: CircularProgressIndicator(
+                                value: progress.expectedTotalBytes != null
+                                    ? progress.cumulativeBytesLoaded /
+                                        progress.expectedTotalBytes!
+                                    : null,
+                              ),
+                            ),
+                          );
+                        },
+                        errorBuilder: (_, _, _) => Container(
+                          width: 220,
+                          height: 120,
+                          color: Colors.black12,
+                          child: const Icon(Icons.broken_image_outlined),
+                        ),
+                      ),
+                    ),
                   ),
-                ),
+                  if (m.text.isNotEmpty &&
+                      m.text != '📷 Foto') ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      m.text,
+                      style: TextStyle(
+                        color: mine ? Colors.white : AppColors.textPrimary,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ] else
+                  Text(
+                    m.text,
+                    style: TextStyle(
+                      color: mine ? Colors.white : AppColors.textPrimary,
+                      height: 1.35,
+                    ),
+                  ),
                 const SizedBox(height: 2),
                 Text(
                   _formatMessageTime(m.createdAt),
@@ -846,13 +979,19 @@ class _MessagesPageState extends State<MessagesPage>
       ),
       child: Row(
         children: [
+          IconButton(
+            onPressed: _sending ? null : _pickAndSendImage,
+            tooltip: 'Enviar foto',
+            icon: const Icon(Icons.add_photo_alternate_outlined,
+                color: AppColors.primary),
+          ),
           Expanded(
             child: TextField(
               controller: _textController,
               minLines: 1,
               maxLines: 4,
               decoration: InputDecoration(
-                hintText: 'Mensaje',
+                hintText: 'Mensaje o pie de foto',
                 filled: true,
                 fillColor: AppColors.primaryLight.withValues(alpha: 0.25),
                 border: OutlineInputBorder(

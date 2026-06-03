@@ -4,6 +4,10 @@ import { AuthRequest } from '../middleware/auth';
 import { prisma } from '../lib/prisma';
 import { AppointmentStatus } from '../types/enums';
 import { recordCompletedVisit } from './appointment.controller';
+import {
+  completeAppointmentWithReport,
+  type ConsultationReportInput,
+} from '../services/consultationReport.service';
 import { assertDoctorFacility } from '../utils/doctorFacilities';
 import {
   acceptClinicInvitation as acceptClinicInvitationService,
@@ -196,10 +200,20 @@ export const getMyAppointments = async (req: AuthRequest, res: Response) => {
 };
 
 export const updateAppointmentStatus = async (req: AuthRequest, res: Response) => {
-  const { status, notes, clinicalNotes } = req.body;
+  const { status, notes, clinicalNotes, report } = req.body as {
+    status?: string;
+    notes?: string;
+    clinicalNotes?: string;
+    report?: ConsultationReportInput;
+  };
 
   const appointment = await prisma.appointment.findFirst({
     where: { id: req.params.id, doctorId: req.user!.id },
+    include: {
+      patient: { select: { name: true } },
+      doctor: { select: { name: true } },
+      consultationReport: true,
+    },
   });
   if (!appointment) return res.status(404).json({ error: 'Cita no encontrada' });
 
@@ -208,7 +222,31 @@ export const updateAppointmentStatus = async (req: AuthRequest, res: Response) =
   if (notes !== undefined) updateData.notes = notes;
 
   if (status === AppointmentStatus.COMPLETED) {
-    await recordCompletedVisit(appointment, req.user!.id, clinicalNotes);
+    if (report && typeof report === 'object') {
+      try {
+        await completeAppointmentWithReport(appointment, req.user!.id, report);
+        await prisma.notification.create({
+          data: {
+            userId: appointment.patientId,
+            title: 'Resumen de tu consulta',
+            message: `El Dr(a). ${appointment.doctor.name} registró tu receta e indicaciones. Revísalas en Mis citas.`,
+            type: 'INFO',
+            category: 'APPOINTMENT',
+            relatedPath: '/appointments',
+            relatedId: appointment.id,
+          },
+        });
+      } catch (e) {
+        return res.status(400).json({ error: (e as Error).message });
+      }
+    } else if (!appointment.consultationReport) {
+      return res.status(400).json({
+        error:
+          'Debes completar el informe de consulta (hallazgos, diagnóstico, medicación e instrucciones)',
+      });
+    } else {
+      await recordCompletedVisit(appointment, req.user!.id, clinicalNotes);
+    }
   }
 
   await prisma.appointment.update({
@@ -239,7 +277,10 @@ export const getPatientMedicalHistory = async (req: AuthRequest, res: Response) 
       where: { patientId: req.params.patientId },
       include: { entries: { include: { doctor: true }, orderBy: { date: 'desc' } } },
     }),
-    prisma.patientProfile.findUnique({ where: { userId: req.params.patientId } }),
+    prisma.patientProfile.findUnique({
+      where: { userId: req.params.patientId },
+      include: { weightControls: { orderBy: { sortOrder: 'asc' } } },
+    }),
   ]);
 
   res.json({

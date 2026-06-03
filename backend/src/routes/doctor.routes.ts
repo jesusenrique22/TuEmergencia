@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { listPatientMedicalDocuments } from '../controllers/medicalDocument.controller';
 import {
   changeMyPassword,
   getMyProfile,
@@ -44,6 +45,7 @@ router.get('/appointments', getMyAppointments);
 router.patch('/appointments/:id', updateAppointmentStatus);
 router.get('/patients', getMyPatients);
 router.get('/patients/:patientId/medical-history', getPatientMedicalHistory);
+router.get('/patients/:patientId/medical-documents', listPatientMedicalDocuments);
 router.post('/patients/:patientId/medical-history/entries', addMedicalHistoryEntry);
 router.put('/patients/:patientId/weight-controls', updatePatientWeightControls);
 router.post('/clinic-invitations/:id/accept', acceptClinicInvitation);

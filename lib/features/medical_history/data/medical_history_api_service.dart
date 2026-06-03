@@ -1,4 +1,5 @@
 import '../../../core/network/api_client.dart';
+import '../../patient_profile/domain/models/patient_profile.dart';
 import '../../patient_profile/domain/models/weight_control_record.dart';
 
 final _client = ApiClient();
@@ -117,6 +118,7 @@ class MedicalHistoryApiService {
   Future<
       ({
         PatientMedicalRecord record,
+        PatientProfile? profile,
         String? patientName,
         String? avatar,
         List<WeightControlRecord> weightControls,
@@ -130,6 +132,9 @@ class MedicalHistoryApiService {
     final controlsRaw = profileMap?['weightControls'] as List<dynamic>? ?? [];
     return (
       record: PatientMedicalRecord.fromJson(historyMap),
+      profile: profileMap != null
+          ? PatientProfile.fromJson(profileMap)
+          : null,
       patientName: profileMap?['fullName'] as String?,
       avatar: null,
       weightControls: controlsRaw

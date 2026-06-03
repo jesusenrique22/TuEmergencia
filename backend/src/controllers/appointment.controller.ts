@@ -217,3 +217,25 @@ export const rateAppointment = async (req: AuthRequest, res: Response) => {
   const populated = await loadAppointment(appointment.id);
   res.json(populated);
 };
+
+export const acknowledgeConsultationReport = async (req: AuthRequest, res: Response) => {
+  const appointment = await prisma.appointment.findUnique({
+    where: { id: req.params.id },
+    include: { consultationReport: true },
+  });
+  if (!appointment) return res.status(404).json({ error: 'Cita no encontrada' });
+  if (appointment.patientId !== req.user!.id) {
+    return res.status(403).json({ error: 'Acceso denegado' });
+  }
+  if (!appointment.consultationReport) {
+    return res.status(400).json({ error: 'Esta cita aún no tiene informe del médico' });
+  }
+
+  await prisma.appointmentConsultationReport.update({
+    where: { appointmentId: appointment.id },
+    data: { patientAcknowledgedAt: new Date() },
+  });
+
+  const populated = await loadAppointment(appointment.id);
+  res.json(populated);
+};

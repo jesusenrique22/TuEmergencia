@@ -121,11 +121,6 @@ class _WebRtcCallPageState extends State<WebRtcCallPage> {
       final active = ActiveCallService.instance;
       if (active.blocksNewCall(_conversationId)) {
         if (active.isMinimized && _tryRestoreParkedSession()) return;
-        if (active.conversationId == _conversationId) {
-          active.expandToFullScreen();
-          if (mounted) Navigator.of(context, rootNavigator: true).pop();
-          return;
-        }
         if (!mounted || generation != _setupGeneration) return;
         setState(() {
           _error =

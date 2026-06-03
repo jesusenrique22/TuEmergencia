@@ -126,6 +126,15 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
             icon: Icons.edit_note_rounded,
             onPressed: _openClinicalHistory,
           ),
+          const SizedBox(height: 12),
+          ProfileGradientButton(
+            label: 'Compartir exámenes con mi médico',
+            icon: Icons.upload_file_rounded,
+            onPressed: () => Navigator.pushNamed(
+              context,
+              AppRoutes.patientShareExams,
+            ),
+          ),
           const SizedBox(height: 20),
           if (profile != null) ...[
             if (profile.weightControls.isNotEmpty) ...[

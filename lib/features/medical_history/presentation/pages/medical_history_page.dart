@@ -9,7 +9,11 @@ import '../../../auth/domain/models/role.dart';
 import '../../data/medical_history_api_service.dart';
 import '../../../chat/data/chat_api_service.dart';
 import '../../../../core/navigation/app_routes.dart';
+import '../../../patient_profile/data/patient_profile_repository.dart';
+import '../../../patient_profile/domain/models/patient_profile.dart';
 import '../../../patient_profile/domain/models/weight_control_record.dart';
+import '../widgets/medical_documents_section.dart';
+import '../widgets/patient_antecedents_summary.dart';
 import '../widgets/patient_weight_control_panel.dart';
 
 class MedicalHistoryPage extends StatefulWidget {
@@ -34,6 +38,9 @@ class _MedicalHistoryPageState extends State<MedicalHistoryPage> {
   List<DoctorPatientItem> _patients = [];
   DoctorPatientItem? _selectedPatient;
   PatientMedicalRecord? _selectedRecord;
+  PatientProfile? _selectedProfile;
+  PatientProfile? _myProfile;
+  String? _initialPatientId;
   List<WeightControlRecord> _patientWeightControls = [];
   bool _loadingRecord = false;
   bool _savingWeightControls = false;
@@ -56,8 +63,11 @@ class _MedicalHistoryPageState extends State<MedicalHistoryPage> {
     _didReadArgs = true;
 
     final args = ModalRoute.of(context)?.settings.arguments;
-    if (args is String && args.isNotEmpty && !_isDoctor) {
-      // patient name passed — ignored for API version
+    if (args is Map) {
+      final id = args['patientId'];
+      if (id is String && id.isNotEmpty) _initialPatientId = id;
+    } else if (args is String && args.isNotEmpty && _isDoctor) {
+      _initialPatientId = args;
     }
   }
 
@@ -73,10 +83,23 @@ class _MedicalHistoryPageState extends State<MedicalHistoryPage> {
           _patients = pts;
           _loading = false;
         });
+        final targetId = _initialPatientId;
+        if (targetId != null && targetId.isNotEmpty) {
+          final match = pts.where((p) => p.userId == targetId).firstOrNull;
+          await _loadPatientRecord(
+            match ??
+                DoctorPatientItem(
+                  userId: targetId,
+                  name: 'Paciente',
+                ),
+          );
+        }
       } else {
+        await PatientProfileRepository.refreshFromApi();
         final record = await _service.getMyHistory();
         setState(() {
           _myRecord = record;
+          _myProfile = PatientProfileRepository.activeProfile;
           _loading = false;
         });
       }
@@ -99,12 +122,24 @@ class _MedicalHistoryPageState extends State<MedicalHistoryPage> {
       _loadingRecord = true;
       _recordError = null;
       _selectedRecord = null;
+      _selectedProfile = null;
     });
     try {
       final result = await _service.getPatientHistory(patient.userId);
       setState(() {
         _selectedRecord = result.record;
+        _selectedProfile = result.profile;
         _patientWeightControls = result.weightControls;
+        if (result.patientName != null && result.patientName!.isNotEmpty) {
+          _selectedPatient = DoctorPatientItem(
+            userId: patient.userId,
+            name: result.patientName!,
+            profilePic: patient.profilePic,
+            bloodType: result.profile?.bloodType ?? patient.bloodType,
+            chronicConditions:
+                result.profile?.chronicConditions ?? patient.chronicConditions,
+          );
+        }
         _loadingRecord = false;
       });
     } on ApiException catch (e) {
@@ -129,7 +164,7 @@ class _MedicalHistoryPageState extends State<MedicalHistoryPage> {
               ? (_selectedPatient == null
                   ? 'Historial Médico'
                   : _selectedPatient!.name)
-              : 'Mi Historial Médico',
+              : 'Mi historial clínico',
         ),
         actions: [
           if (_isDoctor && _selectedPatient != null)
@@ -337,7 +372,15 @@ class _MedicalHistoryPageState extends State<MedicalHistoryPage> {
             onSave: _saveWeightControls,
           ),
           const SizedBox(height: 24),
-          _buildAntecedentsCard(record),
+          PatientAntecedentsSummary(
+            profile: _selectedProfile,
+            record: record,
+          ),
+          const SizedBox(height: 24),
+          MedicalDocumentsSection(
+            readOnly: true,
+            patientId: _selectedPatient?.userId,
+          ),
           const SizedBox(height: 24),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -595,11 +638,16 @@ class _MedicalHistoryPageState extends State<MedicalHistoryPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildProfileHeader(name),
+          const SizedBox(height: 16),
+          _buildPatientUploadPrompt(context),
           const SizedBox(height: 24),
-          if (record != null) ...[
-            _buildAntecedentsCard(record),
-            const SizedBox(height: 24),
-          ],
+          PatientAntecedentsSummary(
+            profile: _myProfile,
+            record: record,
+          ),
+          const SizedBox(height: 24),
+          const MedicalDocumentsSection(),
+          const SizedBox(height: 24),
           const Text(
             'Visitas pasadas',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -624,6 +672,51 @@ class _MedicalHistoryPageState extends State<MedicalHistoryPage> {
           else
             ...record.entries.map((e) => _EntryCard(entry: e)),
         ],
+      ),
+    );
+  }
+
+  Widget _buildPatientUploadPrompt(BuildContext context) {
+    return Material(
+      color: AppColors.primary.withValues(alpha: 0.08),
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () =>
+            Navigator.pushNamed(context, AppRoutes.patientShareExams),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              const Icon(Icons.upload_file_rounded,
+                  color: AppColors.primary, size: 28),
+              const SizedBox(width: 14),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Subir exámenes para tu médico',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Toca aquí para laboratorio, radiografías o PDF',
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.arrow_forward_rounded, color: AppColors.primary),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -673,137 +766,6 @@ class _MedicalHistoryPageState extends State<MedicalHistoryPage> {
     );
   }
 
-  Widget _buildAntecedentsCard(PatientMedicalRecord record) {
-    final items = <_AntecedentRow>[];
-
-    if (record.bloodType?.isNotEmpty == true) {
-      items.add(
-        _AntecedentRow(
-          icon: Icons.bloodtype_rounded,
-          color: Colors.red,
-          label: 'Tipo de sangre',
-          value: record.bloodType!,
-        ),
-      );
-    }
-    if (record.allergies?.isNotEmpty == true) {
-      items.add(
-        _AntecedentRow(
-          icon: Icons.warning_amber_rounded,
-          color: Colors.orange,
-          label: 'Alergias',
-          value: record.allergies!,
-        ),
-      );
-    }
-    if (record.chronicConditions?.isNotEmpty == true) {
-      items.add(
-        _AntecedentRow(
-          icon: Icons.monitor_heart_rounded,
-          color: Colors.purple,
-          label: 'Condiciones crónicas',
-          value: record.chronicConditions!,
-        ),
-      );
-    }
-    if (record.currentMedications?.isNotEmpty == true) {
-      items.add(
-        _AntecedentRow(
-          icon: Icons.medication_rounded,
-          color: AppColors.primary,
-          label: 'Medicación actual',
-          value: record.currentMedications!,
-        ),
-      );
-    }
-    if (record.surgeries?.isNotEmpty == true) {
-      items.add(
-        _AntecedentRow(
-          icon: Icons.healing_rounded,
-          color: Colors.teal,
-          label: 'Cirugías previas',
-          value: record.surgeries!,
-        ),
-      );
-    }
-
-    if (items.isEmpty) return const SizedBox.shrink();
-
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              Icon(Icons.person_pin_rounded,
-                  color: AppColors.primary, size: 18),
-              SizedBox(width: 8),
-              Text(
-                'Antecedentes',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          ...items.map((row) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(row.icon, color: row.color, size: 16),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            row.label,
-                            style: const TextStyle(
-                              color: AppColors.textSecondary,
-                              fontSize: 11,
-                            ),
-                          ),
-                          Text(
-                            row.value,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              )),
-        ],
-      ),
-    );
-  }
-}
-
-class _AntecedentRow {
-  final IconData icon;
-  final Color color;
-  final String label;
-  final String value;
-
-  const _AntecedentRow({
-    required this.icon,
-    required this.color,
-    required this.label,
-    required this.value,
-  });
 }
 
 class _EntryCard extends StatelessWidget {

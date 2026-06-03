@@ -1,6 +1,9 @@
 # Local Flutter SDK checkout (do not commit; use system Flutter)
 /flutter/
 
+# Uploaded patient medical files (local dev)
+backend/uploads/
+
 # Miscellaneous
 *.class
 *.log

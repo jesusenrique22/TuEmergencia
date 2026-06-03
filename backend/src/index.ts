@@ -1,4 +1,5 @@
 import express from 'express';
+import path from 'path';
 import dotenv from 'dotenv';
 
 import { connectDatabase } from './config/db';
@@ -23,7 +24,15 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(createCorsMiddleware());
-app.use(express.json());
+app.use(express.json({ limit: '16mb' }));
+app.use(
+  '/uploads/medical-documents',
+  express.static(path.join(process.cwd(), 'uploads', 'medical-documents')),
+);
+app.use(
+  '/uploads/chat-images',
+  express.static(path.join(process.cwd(), 'uploads', 'chat-images')),
+);
 
 app.get('/health', (_req, res) => {
   res.status(200).json({ status: 'OK', message: 'Smart Medic API running' });

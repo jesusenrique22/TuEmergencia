@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'dart:developer' as developer;
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 
 import '../../features/telemedicine/data/webrtc_call_controller.dart';
 import 'app_realtime.dart';
 
-/// Sesión de llamada WebRTC activa (pantalla completa o minimizada).
+/// Sesión de llamada activa (pantalla completa o minimizada).
 class ActiveCallService extends ChangeNotifier {
   ActiveCallService._();
   static final ActiveCallService instance = ActiveCallService._();
@@ -38,7 +38,12 @@ class ActiveCallService extends ChangeNotifier {
   bool isParked(String conversationId) =>
       hasActiveCall && _minimized && _conversationId == conversationId;
 
-  /// Registra una llamada en curso (pantalla de llamada abierta).
+  bool blocksNewCall(String targetConversationId, {bool restoring = false}) {
+    if (!hasActiveCall) return false;
+    if (restoring && _conversationId == targetConversationId) return false;
+    return true;
+  }
+
   void markInCall({
     required String conversationId,
     required String peerName,
@@ -54,13 +59,6 @@ class ActiveCallService extends ChangeNotifier {
     _minimized = false;
     developer.log('sesión activa conv=$conversationId', name: _logName);
     notifyListeners();
-  }
-
-  /// ¿Bloquear abrir otra llamada hacia [targetConversationId]?
-  bool blocksNewCall(String targetConversationId, {bool restoring = false}) {
-    if (!hasActiveCall) return false;
-    if (restoring && _conversationId == targetConversationId) return false;
-    return true;
   }
 
   void park({
@@ -109,7 +107,9 @@ class ActiveCallService extends ChangeNotifier {
     bool cameraOff,
   })?
   resume(String conversationId) {
-    if (!hasActiveCall || _conversationId != conversationId || _controller == null) {
+    if (!hasActiveCall ||
+        _conversationId != conversationId ||
+        _controller == null) {
       return null;
     }
 
@@ -151,12 +151,48 @@ class ActiveCallService extends ChangeNotifier {
     );
   }
 
-  /// La pantalla de llamada terminó (colgar o error); no dispone el controller si está minimizado.
+  /// Aviso breve y vuelve a la llamada activa (p. ej. intentó llamar a otro contacto).
+  void notifyBusyAndReturnToCall() {
+    final ctx = AppRealtime.navigatorKey?.currentContext;
+    if (ctx != null && ctx.mounted) {
+      ScaffoldMessenger.of(ctx).clearSnackBars();
+      ScaffoldMessenger.of(ctx).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 88),
+          duration: const Duration(seconds: 2),
+          content: Row(
+            children: [
+              const Icon(Icons.phone_in_talk, color: Colors.white, size: 22),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Ya estás en llamada con $_peerName',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      expandToFullScreen();
+    });
+    developer.log('aviso llamada activa → volver a $_peerName', name: _logName);
+  }
+
+  /// La pantalla de llamada terminó; no toca el controller si sigue minimizado.
   void releaseSession(String conversationId) {
     if (_conversationId != conversationId) return;
     if (_controller != null && _minimized) return;
 
-    _clearState();
+    _conversationId = '';
+    _peerName = '';
+    _minimized = false;
+    _controller = null;
+    unawaited(_statusSub?.cancel());
+    _statusSub = null;
     notifyListeners();
   }
 
@@ -191,17 +227,6 @@ class ActiveCallService extends ChangeNotifier {
     }
 
     notifyListeners();
-  }
-
-  void _clearState() {
-    _conversationId = '';
-    _peerName = '';
-    _minimized = false;
-    _controller = null;
-    unawaited(_statusSub?.cancel());
-    _statusSub = null;
-    unawaited(_videoLayoutSub?.cancel());
-    _videoLayoutSub = null;
   }
 
   Future<void> clear() => hangUp(notifyPeer: true);

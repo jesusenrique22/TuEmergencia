@@ -1,6 +1,9 @@
+import 'dart:convert';
+
 import '../../../core/network/api_client.dart';
 import '../../../core/utils/appointment_datetime.dart';
 import '../domain/models/appointment.dart';
+import '../domain/models/consultation_report.dart';
 
 final _client = ApiClient();
 
@@ -71,13 +74,39 @@ class AppointmentApiService {
     String status, {
     String? notes,
     String? clinicalNotes,
+    ConsultationReport? report,
+    List<({List<int> bytes, String mimeType, String fileName})>? attachments,
   }) async {
     final body = <String, dynamic>{
       'status': status,
       'notes': ?notes,
       'clinicalNotes': ?clinicalNotes,
     };
+    if (report != null) {
+      final reportBody = report.toApiBody();
+      if (attachments != null && attachments.isNotEmpty) {
+        reportBody['attachments'] = attachments
+            .map(
+              (a) => {
+                'dataBase64': base64Encode(a.bytes),
+                'mimeType': a.mimeType,
+                'fileName': a.fileName,
+              },
+            )
+            .toList();
+      }
+      body['report'] = reportBody;
+    }
     final data = await _client.patch('/api/doctors/appointments/$id', body);
+    return Appointment.fromJson(data);
+  }
+
+  Future<Appointment> acknowledgeReport(String appointmentId) async {
+    final data = await _client.post(
+      '/api/appointments/$appointmentId/acknowledge-report',
+      {},
+      auth: true,
+    );
     return Appointment.fromJson(data);
   }
 }

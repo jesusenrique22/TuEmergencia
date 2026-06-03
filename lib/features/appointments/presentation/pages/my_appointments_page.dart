@@ -8,8 +8,11 @@ import '../../../../core/utils/appointment_datetime.dart';
 import '../../../../core/widgets/responsive_scaffold.dart';
 import '../../../../core/widgets/safe_avatar.dart';
 import '../../../auth/domain/models/role.dart';
+import '../../../../core/services/consultation_closure_coordinator.dart';
 import '../../data/appointment_api_service.dart';
 import '../../domain/models/appointment.dart';
+import '../widgets/consultation_report_doctor_chip.dart';
+import '../widgets/consultation_report_patient_card.dart';
 import '../widgets/doctor_rating_dialog.dart';
 
 class MyAppointmentsPage extends StatefulWidget {
@@ -154,6 +157,7 @@ class _MyAppointmentsPageState extends State<MyAppointmentsPage>
         onRefresh: _load,
         child: Column(
           children: [
+            if (!_isDoctor) _PatientShareExamsBanner(),
             TabBar(
               controller: _tabController,
               labelColor: AppColors.primary,
@@ -268,6 +272,14 @@ class _MyAppointmentsPageState extends State<MyAppointmentsPage>
         formatDate: _fmt,
         onCancel: () => _cancelAppt(list[i]),
         onComplete: _isDoctor ? () => _completeAppt(list[i]) : null,
+        onPatientReportUpdated: _load,
+        onViewHistory: _isDoctor
+            ? () => Navigator.pushNamed(
+                  context,
+                  AppRoutes.medicalHistory,
+                  arguments: {'patientId': list[i].patientId},
+                )
+            : null,
         onRate: !_isDoctor && list[i].canRate
             ? () => _rateDoctor(list[i])
             : null,
@@ -311,65 +323,69 @@ class _MyAppointmentsPageState extends State<MyAppointmentsPage>
   }
 
   Future<void> _completeAppt(Appointment appt) async {
-    String notes = '';
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Completar consulta'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Paciente: ${appt.patientName}',
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              decoration: InputDecoration(
-                labelText: 'Notas clínicas (opcionales)',
-                filled: true,
-                fillColor: AppColors.surface,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: AppColors.border),
+    final done = await ConsultationClosureCoordinator.openFor(appt);
+    if (done == true) _load();
+  }
+}
+
+class _PatientShareExamsBanner extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: Material(
+        color: AppColors.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () =>
+              Navigator.pushNamed(context, AppRoutes.patientShareExams),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.upload_file_rounded,
+                    color: AppColors.primary,
+                  ),
                 ),
-              ),
-              maxLines: 3,
-              onChanged: (v) => notes = v,
+                const SizedBox(width: 14),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Compartir exámenes con tu médico',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'Laboratorio, radiografías o PDF',
+                        style: TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right_rounded,
+                    color: AppColors.primary),
+              ],
             ),
-          ],
+          ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton.icon(
-            onPressed: () => Navigator.pop(ctx, true),
-            icon: const Icon(Icons.check_circle_rounded),
-            label: const Text('Completar'),
-          ),
-        ],
       ),
     );
-    if (ok != true) return;
-    try {
-      await _service.updateStatus(appt.id, 'COMPLETED', clinicalNotes: notes);
-      _load();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Consulta completada y registrada en historial'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message), backgroundColor: Colors.red),
-      );
-    }
   }
 }
 
@@ -379,7 +395,9 @@ class _AppointmentCard extends StatelessWidget {
   final String Function(DateTime) formatDate;
   final VoidCallback? onCancel;
   final VoidCallback? onComplete;
+  final VoidCallback? onViewHistory;
   final VoidCallback? onRate;
+  final VoidCallback? onPatientReportUpdated;
 
   const _AppointmentCard({
     required this.appt,
@@ -387,7 +405,9 @@ class _AppointmentCard extends StatelessWidget {
     required this.formatDate,
     this.onCancel,
     this.onComplete,
+    this.onViewHistory,
     this.onRate,
+    this.onPatientReportUpdated,
   });
 
   @override
@@ -547,23 +567,60 @@ class _AppointmentCard extends StatelessWidget {
               ),
             ),
           ],
-          if (appt.status == AppointmentStatus.confirmed ||
-              appt.status == AppointmentStatus.pending) ...[
+          if (!isDoctor && appt.hasConsultationReport) ...[
+            ConsultationReportPatientCard(
+              appointment: appt,
+              onUpdated: onPatientReportUpdated,
+            ),
+          ],
+          if (isDoctor && appt.needsClosure) ...[
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: onComplete,
+                icon: const Icon(Icons.assignment_rounded, size: 18),
+                label: const Text('Completar informe de consulta'),
+                style: FilledButton.styleFrom(backgroundColor: Colors.orange),
+              ),
+            ),
+          ],
+          if (isDoctor &&
+              appt.hasConsultationReport &&
+              !appt.needsClosure) ...[
+            const SizedBox(height: 14),
+            ConsultationReportDoctorChip(appointment: appt),
+          ],
+          if (isDoctor && onViewHistory != null) ...[
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: onViewHistory,
+                icon: const Icon(Icons.folder_shared_rounded, size: 18),
+                label: const Text('Historial y documentos del paciente'),
+              ),
+            ),
+          ],
+          if (isDoctor &&
+              onComplete != null &&
+              !appt.needsClosure &&
+              (appt.status == AppointmentStatus.confirmed ||
+                  appt.status == AppointmentStatus.pending)) ...[
             const SizedBox(height: 14),
             Row(
               children: [
-                if (onComplete != null)
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: onComplete,
-                      icon: const Icon(Icons.check_circle_rounded, size: 16),
-                      label: const Text('Completar'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Colors.green,
-                      ),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: onComplete,
+                    icon: const Icon(Icons.check_circle_rounded, size: 16),
+                    label: const Text('Completar consulta'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.green,
                     ),
                   ),
-                if (onComplete != null) const SizedBox(width: 10),
+                ),
+                const SizedBox(width: 10),
                 if (onCancel != null)
                   Expanded(
                     child: OutlinedButton.icon(

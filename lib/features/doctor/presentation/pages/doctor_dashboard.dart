@@ -846,6 +846,7 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
                   onPressed: () => Navigator.pushNamed(
                     context,
                     AppRoutes.medicalHistory,
+                    arguments: {'patientId': appt.patientId},
                   ),
                 ),
                 if (isCompleted)

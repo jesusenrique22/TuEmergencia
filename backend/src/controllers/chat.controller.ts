@@ -17,6 +17,7 @@ import { mapChatConversation, mapChatMessage } from '../utils/prismaMappers';
 import { omitPassword, toApiDoc } from '../utils/apiDoc';
 import { buildMessageBroadcasts } from '../services/realtimeOrchestration.service';
 import { pushRealtimeBroadcasts } from '../socket/realtimeGatewayClient';
+import { saveBase64ChatImage } from '../services/chatImageStorage.service';
 
 function parseKind(value: unknown): ChatMessageKind | undefined {
   if (value === 'clinical' || value === 'chat') return value;
@@ -211,22 +212,38 @@ export const getMessages = async (req: AuthRequest, res: Response) => {
 };
 
 export const sendMessage = async (req: AuthRequest, res: Response) => {
-  const { conversationId, text, kind } = req.body;
+  const { conversationId, text, kind, imageBase64, mimeType } = req.body as {
+    conversationId?: string;
+    text?: string;
+    kind?: string;
+    imageBase64?: string;
+    mimeType?: string;
+  };
   try {
+    let imageUrl: string | undefined;
+    if (imageBase64?.trim()) {
+      if (!mimeType?.trim()) {
+        return res.status(400).json({ error: 'mimeType requerido con la imagen' });
+      }
+      const stored = saveBase64ChatImage(imageBase64.trim(), mimeType.trim());
+      imageUrl = stored.fileUrl;
+    }
+
     const parsedKind = parseKind(kind);
-    const { message, conversation, kind: messageKind } = await createChatMessage({
-      conversationId,
+    const { message, conversation, kind: messageKind, preview } = await createChatMessage({
+      conversationId: conversationId!,
       senderId: req.user!.id,
-      text,
+      text: text ?? '',
+      imageUrl,
       kind: parsedKind,
     });
     const broadcasts = buildMessageBroadcasts(
       req.user!.id,
-      conversationId,
+      conversationId!,
       message,
       messageKind,
       conversation,
-      String(text).trim(),
+      preview,
     );
     await pushRealtimeBroadcasts(broadcasts);
     res.status(201).json(message);

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import '../../../core/network/api_client.dart';
 import '../../medical_history/data/medical_history_api_service.dart';
 
@@ -106,6 +108,7 @@ class ChatMessageItem {
   final String senderId;
   final String senderName;
   final String text;
+  final String? imageUrl;
   final ChatMessageKind kind;
   final DateTime createdAt;
   final String? doctorName;
@@ -116,11 +119,14 @@ class ChatMessageItem {
     required this.senderId,
     required this.senderName,
     required this.text,
+    this.imageUrl,
     this.kind = ChatMessageKind.chat,
     required this.createdAt,
     this.doctorName,
     this.patientName,
   });
+
+  bool get hasImage => imageUrl != null && imageUrl!.isNotEmpty;
 
   factory ChatMessageItem.fromJson(Map<String, dynamic> j) {
     final sender = j['senderId'];
@@ -148,6 +154,7 @@ class ChatMessageItem {
       senderId: senderId,
       senderName: senderName,
       text: j['text'] as String? ?? '',
+      imageUrl: j['imageUrl'] as String?,
       kind: _kindFrom(j['kind']),
       createdAt: DateTime.tryParse(j['createdAt'] as String? ?? '') ??
           DateTime.now(),
@@ -266,18 +273,21 @@ class ChatApiService {
 
   Future<ChatMessageItem> sendMessage({
     required String conversationId,
-    required String text,
+    String text = '',
     ChatMessageKind kind = ChatMessageKind.chat,
+    List<int>? imageBytes,
+    String? imageMimeType,
   }) async {
-    final data = await _client.post(
-      '/api/chat/messages',
-      {
-        'conversationId': conversationId,
-        'text': text,
-        'kind': kind == ChatMessageKind.clinical ? 'clinical' : 'chat',
-      },
-      auth: true,
-    );
+    final body = <String, dynamic>{
+      'conversationId': conversationId,
+      'text': text,
+      'kind': kind == ChatMessageKind.clinical ? 'clinical' : 'chat',
+    };
+    if (imageBytes != null && imageBytes.isNotEmpty) {
+      body['imageBase64'] = base64Encode(imageBytes);
+      body['mimeType'] = imageMimeType ?? 'image/jpeg';
+    }
+    final data = await _client.post('/api/chat/messages', body, auth: true);
     return ChatMessageItem.fromJson(data);
   }
 }
