@@ -6,6 +6,7 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/app_design.dart';
 import '../../data/appointment_api_service.dart';
+import '../../data/consultation_template_api_service.dart';
 import '../../domain/consultation_closure_templates.dart';
 import '../../domain/models/appointment.dart';
 import '../../domain/models/consultation_report.dart';
@@ -34,19 +35,170 @@ class _PendingAttachment {
 
 class _ConsultationClosurePageState extends State<ConsultationClosurePage> {
   final _service = AppointmentApiService();
+  final _templateApi = ConsultationTemplateApiService();
   final _findings = TextEditingController();
   final _diagnosis = TextEditingController();
   final _medications = TextEditingController();
   final _instructions = TextEditingController();
+  final _followUpNote = TextEditingController();
   final _imagePicker = ImagePicker();
 
   bool _noMedication = false;
   bool _saving = false;
+  bool _loadingTemplates = true;
   bool _showTemplateHelp = false;
+  bool _hasFollowUp = false;
+  DateTime? _followUpDate;
   String? _selectedTemplateId;
+  List<ConsultationClosureTemplate> _allTemplates = consultationClosureTemplates;
   final List<_PendingAttachment> _attachments = [];
 
   bool get _isPresential => widget.appointment.type == AppointmentType.presential;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCustomTemplates();
+  }
+
+  Future<void> _loadCustomTemplates() async {
+    try {
+      final custom = await _templateApi.listMyTemplates();
+      if (!mounted) return;
+      setState(() {
+        _allTemplates = mergeTemplates(
+          custom
+              .map(
+                (t) => ConsultationClosureTemplate(
+                  id: t.id,
+                  label: t.label,
+                  description: t.description.isNotEmpty
+                      ? t.description
+                      : 'Plantilla personalizada',
+                  findingsHint: t.findingsHint,
+                  diagnosisHint: t.diagnosisHint,
+                  medicationsHint: t.medicationsHint,
+                  instructionsHint: t.instructionsHint,
+                  defaultNoMedication: t.defaultNoMedication,
+                  isCustom: true,
+                ),
+              )
+              .toList(),
+        );
+        _loadingTemplates = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loadingTemplates = false);
+    }
+  }
+
+  Future<void> _saveCurrentAsTemplate() async {
+    final nameCtrl = TextEditingController();
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Guardar plantilla'),
+        content: TextField(
+          controller: nameCtrl,
+          decoration: const InputDecoration(
+            labelText: 'Nombre de la plantilla',
+            hintText: 'Ej: Control diabetes',
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Guardar')),
+        ],
+      ),
+    );
+    if (saved != true || !mounted) return;
+
+    final label = nameCtrl.text.trim();
+    if (label.isEmpty) {
+      _snack('Escribe un nombre para la plantilla', error: true);
+      return;
+    }
+
+    try {
+      final created = await _templateApi.createTemplate(
+        ConsultationTemplateItem(
+          id: '',
+          label: label,
+          description: 'Plantilla personalizada',
+          findingsHint: _findings.text.trim(),
+          diagnosisHint: _diagnosis.text.trim(),
+          medicationsHint: _medications.text.trim(),
+          instructionsHint: _instructions.text.trim(),
+          defaultNoMedication: _noMedication,
+          isCustom: true,
+        ),
+      );
+      if (!mounted) return;
+      setState(() {
+        _allTemplates = [
+          ..._allTemplates,
+          ConsultationClosureTemplate(
+            id: created.id,
+            label: created.label,
+            description: created.description,
+            findingsHint: created.findingsHint,
+            diagnosisHint: created.diagnosisHint,
+            medicationsHint: created.medicationsHint,
+            instructionsHint: created.instructionsHint,
+            defaultNoMedication: created.defaultNoMedication,
+            isCustom: true,
+          ),
+        ];
+        _selectedTemplateId = created.id;
+      });
+      _snack('Plantilla guardada');
+    } on ApiException catch (e) {
+      _snack(e.message, error: true);
+    }
+  }
+
+  Future<void> _deleteTemplate(ConsultationClosureTemplate t) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Eliminar plantilla'),
+        content: Text('¿Eliminar "${t.label}"?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('No')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await _templateApi.deleteTemplate(t.id);
+      if (!mounted) return;
+      setState(() {
+        _allTemplates = _allTemplates.where((x) => x.id != t.id).toList();
+        if (_selectedTemplateId == t.id) _selectedTemplateId = null;
+      });
+    } on ApiException catch (e) {
+      _snack(e.message, error: true);
+    }
+  }
+
+  Future<void> _pickFollowUpDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _followUpDate ?? now.add(const Duration(days: 14)),
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 365)),
+      helpText: 'Próximo control sugerido',
+    );
+    if (picked != null) setState(() => _followUpDate = picked);
+  }
 
   @override
   void dispose() {
@@ -54,6 +206,7 @@ class _ConsultationClosurePageState extends State<ConsultationClosurePage> {
     _diagnosis.dispose();
     _medications.dispose();
     _instructions.dispose();
+    _followUpNote.dispose();
     super.dispose();
   }
 
@@ -166,6 +319,10 @@ class _ConsultationClosurePageState extends State<ConsultationClosurePage> {
       _snack('Indica medicamentos o marca "Sin medicación"', error: true);
       return;
     }
+    if (_hasFollowUp && _followUpDate == null) {
+      _snack('Elige la fecha del próximo control', error: true);
+      return;
+    }
 
     setState(() => _saving = true);
     try {
@@ -178,6 +335,8 @@ class _ConsultationClosurePageState extends State<ConsultationClosurePage> {
         instructions: instructions,
         noMedication: _noMedication,
         templateId: _selectedTemplateId,
+        followUpDate: _hasFollowUp ? _followUpDate : null,
+        followUpNote: _hasFollowUp ? _followUpNote.text.trim() : null,
         createdAt: DateTime.now(),
       );
 
@@ -200,7 +359,9 @@ class _ConsultationClosurePageState extends State<ConsultationClosurePage> {
       Navigator.pop(context, true);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Consulta cerrada. El paciente verá el resumen y podrá descargar el PDF.'),
+          content: Text(
+            'Consulta cerrada. El paciente verá el resumen en Mis citas y en el chat clínico.',
+          ),
           backgroundColor: Colors.green,
         ),
       );
@@ -280,6 +441,11 @@ class _ConsultationClosurePageState extends State<ConsultationClosurePage> {
                         ),
                       ),
                       TextButton.icon(
+                        onPressed: _saveCurrentAsTemplate,
+                        icon: const Icon(Icons.bookmark_add_outlined, size: 18),
+                        label: const Text('Guardar'),
+                      ),
+                      TextButton.icon(
                         onPressed: () =>
                             setState(() => _showTemplateHelp = !_showTemplateHelp),
                         icon: Icon(
@@ -288,7 +454,7 @@ class _ConsultationClosurePageState extends State<ConsultationClosurePage> {
                               : Icons.help_outline_rounded,
                           size: 18,
                         ),
-                        label: Text(_showTemplateHelp ? 'Ocultar' : '¿Qué es esto?'),
+                        label: Text(_showTemplateHelp ? 'Ocultar' : '¿Qué es?'),
                       ),
                     ],
                   ),
@@ -313,22 +479,34 @@ class _ConsultationClosurePageState extends State<ConsultationClosurePage> {
                         ),
                       ),
                     ),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: consultationClosureTemplates.map((t) {
-                      final selected = _selectedTemplateId == t.id;
-                      return FilterChip(
-                        avatar: selected
-                            ? const Icon(Icons.check_rounded, size: 16)
-                            : null,
-                        label: Text(t.label),
-                        selected: selected,
-                        onSelected: (_) => _applyTemplate(t),
-                      );
-                    }).toList(),
-                  ),
-                  if (templateById(_selectedTemplateId) case final t?) ...[
+                  if (_loadingTemplates)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: LinearProgressIndicator(),
+                    )
+                  else
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _allTemplates.map((t) {
+                        final selected = _selectedTemplateId == t.id;
+                        return InputChip(
+                          avatar: selected
+                              ? const Icon(Icons.check_rounded, size: 16)
+                              : (t.isCustom
+                                  ? const Icon(Icons.person_outline_rounded, size: 16)
+                                  : null),
+                          label: Text(t.label),
+                          selected: selected,
+                          onSelected: (_) => _applyTemplate(t),
+                          onDeleted: t.isCustom ? () => _deleteTemplate(t) : null,
+                          deleteIcon: t.isCustom
+                              ? const Icon(Icons.close_rounded, size: 16)
+                              : null,
+                        );
+                      }).toList(),
+                    ),
+                  if (templateById(_selectedTemplateId, _allTemplates) case final t?) ...[
                     const SizedBox(height: 10),
                     Text(
                       t.description,
@@ -373,6 +551,46 @@ class _ConsultationClosurePageState extends State<ConsultationClosurePage> {
                     hint: 'Reposo, alarmas, próximo control…',
                     maxLines: 3,
                   ),
+                  const SizedBox(height: 4),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Indicar próximo control de seguimiento'),
+                    subtitle: const Text(
+                      'Opcional. El paciente lo verá en su panel y recibirá recordatorio.',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                    value: _hasFollowUp,
+                    onChanged: (v) => setState(() {
+                      _hasFollowUp = v;
+                      if (!v) {
+                        _followUpDate = null;
+                        _followUpNote.clear();
+                      } else {
+                        _followUpDate ??=
+                            DateTime.now().add(const Duration(days: 14));
+                      }
+                    }),
+                  ),
+                  if (_hasFollowUp) ...[
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Fecha sugerida de control'),
+                      subtitle: Text(
+                        _followUpDate == null
+                            ? 'Toca para elegir fecha'
+                            : MaterialLocalizations.of(context)
+                                .formatMediumDate(_followUpDate!),
+                      ),
+                      trailing: const Icon(Icons.calendar_today_rounded),
+                      onTap: _pickFollowUpDate,
+                    ),
+                    _field(
+                      controller: _followUpNote,
+                      label: 'Nota de seguimiento (opcional)',
+                      hint: 'Ej: Repetir laboratorio, control de presión…',
+                      maxLines: 2,
+                    ),
+                  ],
                   if (_isPresential) ...[
                     const SizedBox(height: 8),
                     OutlinedButton.icon(

@@ -1,6 +1,12 @@
 import { Router } from 'express';
 import { listPatientMedicalDocuments } from '../controllers/medicalDocument.controller';
 import {
+  deleteMyConsultationTemplate,
+  createMyConsultationTemplate,
+  listMyConsultationTemplates,
+} from '../controllers/consultationTemplate.controller';
+import { getDoctorConsultationFollowUps } from '../controllers/consultationFollowUp.controller';
+import {
   changeMyPassword,
   getMyProfile,
   updateMyProfile,
@@ -43,6 +49,10 @@ router.put('/schedules/:id', updateSchedule);
 router.delete('/schedules/:id', deleteSchedule);
 router.get('/appointments', getMyAppointments);
 router.patch('/appointments/:id', updateAppointmentStatus);
+router.get('/consultation-templates', listMyConsultationTemplates);
+router.post('/consultation-templates', createMyConsultationTemplate);
+router.delete('/consultation-templates/:id', deleteMyConsultationTemplate);
+router.get('/consultation-follow-ups', getDoctorConsultationFollowUps);
 router.get('/patients', getMyPatients);
 router.get('/patients/:patientId/medical-history', getPatientMedicalHistory);
 router.get('/patients/:patientId/medical-documents', listPatientMedicalDocuments);

@@ -8,6 +8,8 @@ class ConsultationReport {
   final bool noMedication;
   final List<String> attachmentUrls;
   final String? templateId;
+  final DateTime? followUpDate;
+  final String? followUpNote;
   final bool patientAcknowledged;
   final DateTime? patientAcknowledgedAt;
   final DateTime createdAt;
@@ -22,6 +24,8 @@ class ConsultationReport {
     this.noMedication = false,
     this.attachmentUrls = const [],
     this.templateId,
+    this.followUpDate,
+    this.followUpNote,
     this.patientAcknowledged = false,
     this.patientAcknowledgedAt,
     required this.createdAt,
@@ -39,6 +43,10 @@ class ConsultationReport {
       noMedication: j['noMedication'] == true,
       attachmentUrls: urls.map((e) => e.toString()).toList(),
       templateId: j['templateId'] as String?,
+      followUpDate: j['followUpDate'] != null
+          ? DateTime.tryParse(j['followUpDate'] as String)
+          : null,
+      followUpNote: j['followUpNote'] as String?,
       patientAcknowledged: j['patientAcknowledged'] == true,
       patientAcknowledgedAt: j['patientAcknowledgedAt'] != null
           ? DateTime.tryParse(j['patientAcknowledgedAt'] as String)
@@ -55,5 +63,9 @@ class ConsultationReport {
         'instructions': instructions,
         'noMedication': noMedication,
         if (templateId != null) 'templateId': templateId,
+        if (followUpDate != null)
+          'followUpDate': followUpDate!.toUtc().toIso8601String(),
+        if (followUpNote != null && followUpNote!.trim().isNotEmpty)
+          'followUpNote': followUpNote,
       };
 }

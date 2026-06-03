@@ -5,6 +5,7 @@ import {
   getMyMedicalHistory,
   getMyAppointments,
 } from '../controllers/patient.controller';
+import { getPatientConsultationFollowUps } from '../controllers/consultationFollowUp.controller';
 import {
   deleteMyMedicalDocument,
   listMyMedicalDocuments,
@@ -24,5 +25,6 @@ router.get('/medical-documents', listMyMedicalDocuments);
 router.post('/medical-documents', uploadMyMedicalDocument);
 router.delete('/medical-documents/:id', deleteMyMedicalDocument);
 router.get('/appointments', getMyAppointments);
+router.get('/consultation-follow-ups', getPatientConsultationFollowUps);
 
 export default router;

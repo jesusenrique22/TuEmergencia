@@ -12,7 +12,9 @@ import '../../../../core/widgets/profile_ui.dart';
 import '../../../../core/widgets/responsive_scaffold.dart';
 import '../../../../core/widgets/safe_avatar.dart';
 import '../../../appointments/data/appointment_api_service.dart';
+import '../../../appointments/data/consultation_follow_up_api_service.dart';
 import '../../../appointments/presentation/widgets/appointment_reminder_host.dart';
+import '../../../appointments/presentation/widgets/consultation_follow_up_section.dart';
 import '../../../notifications/presentation/widgets/notification_badge.dart';
 import '../../../appointments/domain/models/appointment.dart';
 import '../../data/doctor_api_service.dart';
@@ -27,9 +29,11 @@ class DoctorDashboard extends StatefulWidget {
 class _DoctorDashboardState extends State<DoctorDashboard> {
   final _apptService = AppointmentApiService();
   final _doctorApi = DoctorApiService();
+  final _followUpService = ConsultationFollowUpApiService();
 
   List<Appointment> _appointments = [];
   List<Appointment> _todayAppointments = [];
+  List<ConsultationFollowUpItem> _followUps = [];
   DoctorProfileContext? _profile;
   bool _loadingAppts = false;
   bool _telemedicineRequestDismissed = false;
@@ -77,7 +81,21 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
   }
 
   Future<void> _refreshDashboard() async {
-    await Future.wait([_loadProfile(), _loadAppointments()]);
+    await Future.wait([
+      _loadProfile(),
+      _loadAppointments(),
+      _loadFollowUps(),
+    ]);
+  }
+
+  Future<void> _loadFollowUps() async {
+    try {
+      final list = await _followUpService.getDoctorFollowUps();
+      if (!mounted) return;
+      setState(() => _followUps = list);
+    } catch (_) {
+      if (mounted) setState(() => _followUps = []);
+    }
   }
 
   Future<void> _loadProfile() async {
@@ -180,6 +198,13 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
             _buildSectionHeader('Próximas Consultas', 'Ver todas'),
             const SizedBox(height: 16),
             _buildUpcomingAppointments(),
+            if (_followUps.isNotEmpty) ...[
+              const SizedBox(height: 32),
+              ConsultationFollowUpSection(
+                items: _followUps,
+                isDoctor: true,
+              ),
+            ],
             const SizedBox(height: 32),
             if (_showRequest) ...[
               _buildSectionHeader('Solicitudes de Telemedicina', null),

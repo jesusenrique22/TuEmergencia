@@ -9,6 +9,7 @@ class ConsultationClosureTemplate {
   final String? medicationsHint;
   final String? instructionsHint;
   final bool defaultNoMedication;
+  final bool isCustom;
 
   const ConsultationClosureTemplate({
     required this.id,
@@ -19,7 +20,22 @@ class ConsultationClosureTemplate {
     this.medicationsHint,
     this.instructionsHint,
     this.defaultNoMedication = false,
+    this.isCustom = false,
   });
+
+  ConsultationClosureTemplate copyWith({bool? isCustom}) {
+    return ConsultationClosureTemplate(
+      id: id,
+      label: label,
+      description: description,
+      findingsHint: findingsHint,
+      diagnosisHint: diagnosisHint,
+      medicationsHint: medicationsHint,
+      instructionsHint: instructionsHint,
+      defaultNoMedication: defaultNoMedication,
+      isCustom: isCustom ?? this.isCustom,
+    );
+  }
 }
 
 const consultationClosureTemplates = [
@@ -56,10 +72,17 @@ const consultationClosureTemplates = [
   ),
 ];
 
-ConsultationClosureTemplate? templateById(String? id) {
+ConsultationClosureTemplate? templateById(String? id, [List<ConsultationClosureTemplate>? all]) {
   if (id == null) return null;
-  for (final t in consultationClosureTemplates) {
+  final list = all ?? consultationClosureTemplates;
+  for (final t in list) {
     if (t.id == id) return t;
   }
   return null;
+}
+
+List<ConsultationClosureTemplate> mergeTemplates(
+  List<ConsultationClosureTemplate> custom,
+) {
+  return [...consultationClosureTemplates, ...custom];
 }

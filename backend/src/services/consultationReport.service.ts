@@ -2,6 +2,7 @@ import { Appointment } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { saveBase64MedicalFile } from './medicalDocumentStorage.service';
 import { toApiDoc } from '../utils/apiDoc';
+import { sendConsultationSummaryToChat } from './consultationReportChat.service';
 
 export type ConsultationReportInput = {
   findings: string;
@@ -10,6 +11,8 @@ export type ConsultationReportInput = {
   instructions: string;
   noMedication?: boolean;
   templateId?: string;
+  followUpDate?: string | null;
+  followUpNote?: string | null;
   attachments?: Array<{
     dataBase64: string;
     mimeType: string;
@@ -28,6 +31,8 @@ export function mapConsultationReport(
     noMedication: boolean;
     attachmentUrls: string[];
     templateId: string | null;
+    followUpDate: Date | null;
+    followUpNote: string | null;
     patientAcknowledgedAt: Date | null;
     createdAt: Date;
   },
@@ -36,6 +41,15 @@ export function mapConsultationReport(
     ...report,
     patientAcknowledged: report.patientAcknowledgedAt != null,
   });
+}
+
+function parseFollowUpDate(value: string | null | undefined): Date | null {
+  if (value == null || value === '') return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) {
+    throw new Error('Fecha de seguimiento no válida');
+  }
+  return d;
 }
 
 export function validateReportInput(input: ConsultationReportInput): void {
@@ -84,6 +98,8 @@ export async function saveConsultationReport(
     noMedication: input.noMedication === true,
     attachmentUrls,
     templateId: input.templateId?.trim() || null,
+    followUpDate: parseFollowUpDate(input.followUpDate),
+    followUpNote: input.followUpNote?.trim() || null,
   };
 
   return prisma.appointmentConsultationReport.upsert({
@@ -142,6 +158,19 @@ export async function completeAppointmentWithReport(
     input,
     saved.attachmentUrls,
   );
+  try {
+    await sendConsultationSummaryToChat(appointment, doctorId, {
+      findings: saved.findings,
+      diagnosis: saved.diagnosis,
+      medications: saved.medications,
+      instructions: saved.instructions,
+      noMedication: saved.noMedication,
+      followUpDate: saved.followUpDate,
+      followUpNote: saved.followUpNote,
+    });
+  } catch (e) {
+    console.error('No se pudo enviar resumen al chat:', e);
+  }
   return saved;
 }
 

@@ -9,8 +9,10 @@ import '../../../../core/widgets/profile_ui.dart';
 import '../../../notifications/presentation/widgets/notification_badge.dart';
 import '../../../../core/widgets/responsive_scaffold.dart';
 import '../../../appointments/data/appointment_api_service.dart';
+import '../../../appointments/data/consultation_follow_up_api_service.dart';
 import '../../../appointments/domain/models/appointment.dart';
 import '../../../appointments/presentation/widgets/appointment_reminder_host.dart';
+import '../../../appointments/presentation/widgets/consultation_follow_up_section.dart';
 import '../../../patient_profile/data/patient_profile_repository.dart';
 
 /// Content of the Patient Dashboard page – now used inside ResponsiveScaffold.
@@ -23,7 +25,9 @@ class PatientDashboardPage extends StatefulWidget {
 
 class _PatientDashboardPageState extends State<PatientDashboardPage> {
   final _apptService = AppointmentApiService();
+  final _followUpService = ConsultationFollowUpApiService();
   Appointment? _nextAppointment;
+  List<ConsultationFollowUpItem> _followUps = [];
   bool _loadingNextAppt = false;
 
   @override
@@ -38,8 +42,19 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
     await Future.wait([
       PatientProfileRepository.refreshFromApi(),
       _loadNextAppointment(),
+      _loadFollowUps(),
     ]);
     if (mounted) setState(() {});
+  }
+
+  Future<void> _loadFollowUps() async {
+    try {
+      final list = await _followUpService.getPatientFollowUps();
+      if (!mounted) return;
+      setState(() => _followUps = list);
+    } catch (_) {
+      if (mounted) setState(() => _followUps = []);
+    }
   }
 
   Future<void> _loadNextAppointment() async {
@@ -111,6 +126,15 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
               _buildPatientSummary(context),
               const SizedBox(height: 18),
               _buildUpcomingAppointment(context),
+              if (_followUps.isNotEmpty) ...[
+                const SizedBox(height: 18),
+                ConsultationFollowUpSection(
+                  items: _followUps,
+                  isDoctor: false,
+                  onScheduleTap: () =>
+                      Navigator.pushNamed(context, AppRoutes.schedule),
+                ),
+              ],
             ],
           );
 

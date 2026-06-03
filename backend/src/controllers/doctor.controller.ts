@@ -229,7 +229,7 @@ export const updateAppointmentStatus = async (req: AuthRequest, res: Response) =
           data: {
             userId: appointment.patientId,
             title: 'Resumen de tu consulta',
-            message: `El Dr(a). ${appointment.doctor.name} registró tu receta e indicaciones. Revísalas en Mis citas.`,
+            message: `El Dr(a). ${appointment.doctor.name} registró tu receta e indicaciones. También las verás en el chat clínico y en Mis citas.`,
             type: 'INFO',
             category: 'APPOINTMENT',
             relatedPath: '/appointments',

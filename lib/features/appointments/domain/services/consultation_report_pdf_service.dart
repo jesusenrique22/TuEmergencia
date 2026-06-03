@@ -49,6 +49,15 @@ class ConsultationReportPdfService {
                 : report.medications,
           ),
           _section('Instrucciones y seguimiento', report.instructions),
+          if (report.followUpDate != null)
+            _section(
+              'Próximo control sugerido',
+              [
+                DateFormat('d MMM yyyy', 'es').format(report.followUpDate!.toLocal()),
+                if (report.followUpNote != null && report.followUpNote!.isNotEmpty)
+                  report.followUpNote!,
+              ].join('\n'),
+            ),
           pw.Spacer(),
           pw.Text(
             'Documento generado desde Smart Medic. No sustituye prescripción física cuando la ley lo exija.',

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../../../core/config/api_config.dart';
 import '../../../../core/network/api_client.dart';
@@ -136,6 +137,16 @@ class _ConsultationReportPatientCardState
             r.noMedication ? 'Sin medicación indicada' : r.medications,
           ),
           _block('Instrucciones', r.instructions),
+          if (r.followUpDate != null) ...[
+            _block(
+              'Próximo control',
+              [
+                DateFormat('d MMM yyyy', 'es').format(r.followUpDate!.toLocal()),
+                if (r.followUpNote != null && r.followUpNote!.isNotEmpty)
+                  r.followUpNote!,
+              ].join('\n'),
+            ),
+          ],
           if (r.attachmentUrls.isNotEmpty) ...[
             const SizedBox(height: 8),
             const Text(

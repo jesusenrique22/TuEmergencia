@@ -44,6 +44,7 @@ model User {
   historyEntries      MedicalHistoryEntry[]
   medicalDocuments    PatientMedicalDocument[]
   pharmacyOrders      PharmacyOrder[]
+  consultationTemplates DoctorConsultationTemplate[]
 
   @@index([role])
   @@map("users")
@@ -260,13 +261,36 @@ model AppointmentConsultationReport {
   noMedication          Boolean   @default(false) @map("no_medication")
   attachmentUrls        String[]  @default([]) @map("attachment_urls")
   templateId            String?   @map("template_id")
+  followUpDate          DateTime? @map("follow_up_date")
+  followUpNote          String?   @map("follow_up_note")
   patientAcknowledgedAt DateTime? @map("patient_acknowledged_at")
   createdAt             DateTime  @default(now()) @map("created_at")
   updatedAt             DateTime  @updatedAt @map("updated_at")
 
   appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
 
+  @@index([followUpDate])
   @@map("appointment_consultation_reports")
+}
+
+model DoctorConsultationTemplate {
+  id                  String   @id @default(cuid())
+  doctorId            String   @map("doctor_id")
+  label               String
+  description         String   @default("")
+  findingsHint        String?  @map("findings_hint")
+  diagnosisHint       String?  @map("diagnosis_hint")
+  medicationsHint     String?  @map("medications_hint")
+  instructionsHint    String?  @map("instructions_hint")
+  defaultNoMedication Boolean  @default(false) @map("default_no_medication")
+  sortOrder           Int      @default(0) @map("sort_order")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  doctor User @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+
+  @@index([doctorId, sortOrder])
+  @@map("doctor_consultation_templates")
 }
 
 model MedicalHistory {
