@@ -3,7 +3,9 @@ import jwt from 'jsonwebtoken';
 import { UserRole } from '../types/enums';
 import { isSuperAdminRole } from '../utils/roleHelpers';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'vita-os-super-secret';
+import { jwtSecret } from '../config/secrets';
+
+const JWT_SECRET = jwtSecret();
 
 export interface AuthPayload {
   id: string;

@@ -51,11 +51,13 @@ class ConsultationFollowUpSection extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                isDoctor ? 'Seguimientos de consultas' : 'Controles pendientes',
+                isDoctor
+                    ? 'Seguimientos de consultas'
+                    : 'Controles programados por tu médico',
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
             ),
-            if (urgent > 0)
+            if (isDoctor && urgent > 0)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
@@ -73,6 +75,17 @@ class ConsultationFollowUpSection extends StatelessWidget {
               ),
           ],
         ),
+        if (!isDoctor) ...[
+          const SizedBox(height: 6),
+          Text(
+            'Tu médico indicó estas fechas al cerrar la consulta. Si necesitas adelantar la cita, usa Agendar cita.',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey.shade700,
+              height: 1.35,
+            ),
+          ),
+        ],
         const SizedBox(height: 10),
         ...items.take(4).map((item) {
           final name = isDoctor ? item.patientName : item.doctorName;
@@ -99,21 +112,25 @@ class ConsultationFollowUpSection extends StatelessWidget {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
-              trailing: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: _statusColor(item.status).withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  _statusLabel(item.status),
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: _statusColor(item.status),
-                  ),
-                ),
-              ),
+              trailing: isDoctor
+                  ? Container(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: _statusColor(item.status).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        _statusLabel(item.status),
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: _statusColor(item.status),
+                        ),
+                      ),
+                    )
+                  : Icon(Icons.info_outline_rounded,
+                      color: AppColors.primary.withValues(alpha: 0.7)),
               onTap: () => Navigator.pushNamed(context, AppRoutes.appointments),
             ),
           );
@@ -124,7 +141,7 @@ class ConsultationFollowUpSection extends StatelessWidget {
             child: TextButton.icon(
               onPressed: onScheduleTap,
               icon: const Icon(Icons.calendar_month_rounded, size: 18),
-              label: const Text('Agendar cita de control'),
+              label: const Text('Agendar cita (opcional)'),
             ),
           ),
       ],

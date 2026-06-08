@@ -177,15 +177,12 @@ export async function handleCallAccept(
     userId,
   };
 
+  // Solo al par (user:peerId): evita duplicar call:accepted en la sala call:
+  // cuando el llamante ya está en call:… y recibiría el evento dos veces.
   return {
     peerId,
     broadcasts: [
       { room: `user:${peerId}`, event: 'call:accepted', payload: acceptedPayload },
-      {
-        room: `call:${payload.conversationId}`,
-        event: 'call:accepted',
-        payload: acceptedPayload,
-      },
     ],
   };
 }

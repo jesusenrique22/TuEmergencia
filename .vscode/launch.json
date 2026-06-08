@@ -2,17 +2,74 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Flutter Web (LAN · puerto 8080)",
+      "name": "Backend API",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/backend",
+      "runtimeExecutable": "${workspaceFolder}/backend/node_modules/.bin/ts-node-dev",
+      "args": [
+        "--inspect=9230",
+        "--transpile-only",
+        "--no-notify",
+        "src/index.ts"
+      ],
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"],
+      "sourceMaps": true,
+      "resolveSourceMapLocations": [
+        "${workspaceFolder}/backend/**",
+        "!**/node_modules/**"
+      ]
+    },
+    {
+      "name": "Realtime Gateway",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/realtime-gateway",
+      "runtimeExecutable": "${workspaceFolder}/realtime-gateway/node_modules/.bin/ts-node-dev",
+      "args": [
+        "--inspect=9231",
+        "--transpile-only",
+        "--no-notify",
+        "src/index.ts"
+      ],
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"],
+      "sourceMaps": true,
+      "resolveSourceMapLocations": [
+        "${workspaceFolder}/realtime-gateway/**",
+        "!**/node_modules/**"
+      ]
+    },
+    {
+      "name": "Flutter (iOS Simulator)",
       "request": "launch",
       "type": "dart",
       "program": "lib/main.dart",
+      "preLaunchTask": "smart-medic: ensure Flutter paths"
+    },
+    {
+      "name": "Flutter (Android)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "preLaunchTask": "smart-medic: ensure Flutter paths"
+    },
+    {
+      "name": "Flutter Web (LAN · puerto 8088)",
+      "request": "launch",
+      "type": "dart",
+      "program": "lib/main.dart",
+      "preLaunchTask": "smart-medic: ensure Flutter paths",
       "args": [
         "-d",
         "web-server",
         "--web-hostname",
         "0.0.0.0",
         "--web-port",
-        "8080"
+        "8088"
       ]
     },
     {
@@ -20,7 +77,62 @@
       "request": "launch",
       "type": "dart",
       "program": "lib/main.dart",
+      "preLaunchTask": "smart-medic: ensure Flutter paths",
       "args": ["-d", "chrome"]
+    }
+  ],
+  "compounds": [
+    {
+      "name": "★ Stack completo (API + Gateway + Chrome)",
+      "configurations": [
+        "Backend API",
+        "Realtime Gateway",
+        "Flutter Web (Chrome local)"
+      ],
+      "preLaunchTask": "smart-medic: prep debug",
+      "stopAll": true,
+      "presentation": {
+        "group": "Smart Medic",
+        "order": 1
+      }
+    },
+    {
+      "name": "★ Stack completo (API + Gateway + iOS)",
+      "configurations": [
+        "Backend API",
+        "Realtime Gateway",
+        "Flutter (iOS Simulator)"
+      ],
+      "preLaunchTask": "smart-medic: prep debug",
+      "stopAll": true,
+      "presentation": {
+        "group": "Smart Medic",
+        "order": 2
+      }
+    },
+    {
+      "name": "★ Stack completo (API + Gateway + Web LAN)",
+      "configurations": [
+        "Backend API",
+        "Realtime Gateway",
+        "Flutter Web (LAN · puerto 8088)"
+      ],
+      "preLaunchTask": "smart-medic: prep debug",
+      "stopAll": true,
+      "presentation": {
+        "group": "Smart Medic",
+        "order": 3
+      }
+    },
+    {
+      "name": "Solo API + Gateway (Node)",
+      "configurations": ["Backend API", "Realtime Gateway"],
+      "preLaunchTask": "smart-medic: free dev ports",
+      "stopAll": true,
+      "presentation": {
+        "group": "Smart Medic",
+        "order": 4
+      }
     }
   ]
 }

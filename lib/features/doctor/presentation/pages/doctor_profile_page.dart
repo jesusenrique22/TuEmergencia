@@ -8,6 +8,7 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/navigation/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/app_design.dart';
+import '../../../../core/widgets/dialog_controllers.dart';
 import '../../../../core/widgets/profile_ui.dart';
 import '../../../../core/widgets/responsive_scaffold.dart';
 import '../../../../core/widgets/safe_avatar.dart';
@@ -251,7 +252,7 @@ class _DoctorProfilePageState extends State<DoctorProfilePage> {
         );
       },
     );
-    controller.dispose();
+    releaseDialogControllers([controller]);
     if (name == null || name.trim().isEmpty || !mounted) return;
     await _addSpecialtyByName(name.trim());
   }

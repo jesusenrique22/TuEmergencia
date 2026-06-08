@@ -7,9 +7,11 @@ import '../../../../core/services/app_realtime.dart';
 import '../../../../core/navigation/app_routes.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/services/app_notifications.dart';
 import '../../data/notifications_api_service.dart';
 import '../../domain/models/notification_models.dart';
 import 'clinic_invitation_notification_tile.dart';
+import 'consultation_closure_notification_tile.dart';
 
 /// Bandeja desplegable de notificaciones (citas, mensajes, etc.).
 class NotificationsDropdown extends StatefulWidget {
@@ -27,6 +29,7 @@ class _NotificationsDropdownState extends State<NotificationsDropdown> {
   bool _loading = true;
   String? _error;
   StreamSubscription<Map<String, dynamic>>? _socketSub;
+  StreamSubscription<void>? _refreshSub;
 
   @override
   void initState() {
@@ -35,11 +38,15 @@ class _NotificationsDropdownState extends State<NotificationsDropdown> {
     _socketSub = AppRealtime.chatSocket.onNotificationNew.listen((_) {
       if (mounted) _load();
     });
+    _refreshSub = AppNotifications.onRefresh.listen((_) {
+      if (mounted) _load();
+    });
   }
 
   @override
   void dispose() {
     _socketSub?.cancel();
+    _refreshSub?.cancel();
     super.dispose();
   }
 
@@ -59,7 +66,7 @@ class _NotificationsDropdownState extends State<NotificationsDropdown> {
       final list = await _api.list();
       if (!mounted) return;
       setState(() {
-        _items = list;
+        _items = _sortInbox(list);
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -77,12 +84,29 @@ class _NotificationsDropdownState extends State<NotificationsDropdown> {
     }
   }
 
+  List<AppNotification> _sortInbox(List<AppNotification> list) {
+    int priority(AppNotification n) {
+      if (!n.isRead && n.isPendingConsultationClosure) return 0;
+      if (!n.isRead) return 1;
+      if (n.isPendingConsultationClosure) return 2;
+      return 3;
+    }
+
+    return [...list]..sort((a, b) {
+        final pa = priority(a);
+        final pb = priority(b);
+        if (pa != pb) return pa.compareTo(pb);
+        return b.createdAt.compareTo(a.createdAt);
+      });
+  }
+
   Future<void> _markAllRead() async {
     await _api.markAllRead();
     await _load();
   }
 
   Future<void> _onTap(AppNotification n) async {
+    if (n.isPendingConsultationClosure) return;
     if (!n.isRead) {
       await _api.markRead(n.id);
     }
@@ -212,6 +236,18 @@ class _NotificationsDropdownState extends State<NotificationsDropdown> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 ClinicInvitationNotificationTile(
+                  notification: n,
+                  onUpdated: _load,
+                ),
+                const Divider(height: 1),
+              ],
+            );
+          }
+          if (n.isPendingConsultationClosure) {
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ConsultationClosureNotificationTile(
                   notification: n,
                   onUpdated: _load,
                 ),

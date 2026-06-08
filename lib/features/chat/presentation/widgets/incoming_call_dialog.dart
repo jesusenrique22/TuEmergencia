@@ -16,6 +16,7 @@ abstract final class IncomingCallDialog {
     final isVideo = event.callType != 'audio';
     return showGeneralDialog<void>(
       context: context,
+      useRootNavigator: true,
       barrierDismissible: false,
       barrierLabel: 'Llamada entrante',
       barrierColor: Colors.black.withValues(alpha: 0.65),

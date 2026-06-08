@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
+
+import '../../../../core/di/service_locator.dart';
+import '../../../../core/geo/geo_math.dart';
+import '../../../../core/geo/geo_point.dart';
+import '../../../../core/location/device_location_service.dart';
 import '../../../../core/navigation/app_navigation.dart';
 import '../../../../core/navigation/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/responsive_scaffold.dart';
-import '../../../../core/widgets/safe_avatar.dart';
-import '../../domain/models/ambulance_models.dart';
-import '../../domain/models/ambulance_data_mock.dart';
-import '../../../clinics/domain/models/clinic_models.dart';
-import '../../../clinics/domain/models/clinic_data_mock.dart';
+import '../../../catalog/domain/models/catalog_models.dart';
+import '../../../catalog/domain/repositories/catalog_repository.dart';
 import '../../../insurance/domain/services/insurance_calculator.dart';
+import '../../../emergency/domain/models/emergency_models.dart';
+import '../../../emergency/domain/repositories/emergency_repository.dart';
 
 class AmbulanceCheckoutScreen extends StatefulWidget {
   const AmbulanceCheckoutScreen({super.key});
@@ -19,46 +23,130 @@ class AmbulanceCheckoutScreen extends StatefulWidget {
 }
 
 class _AmbulanceCheckoutScreenState extends State<AmbulanceCheckoutScreen> {
-  AmbulanceCompany? _selectedCompany;
-  AlliedClinic? _selectedClinic;
+  final _catalog = sl<CatalogRepository>();
+  final _emergency = sl<EmergencyRepository>();
+  final _location = sl<DeviceLocationService>();
+
   final TextEditingController _symptomsController = TextEditingController();
   final TextEditingController _historyController = TextEditingController();
+
+  List<MedicalFacility> _facilities = [];
+  MedicalFacility? _selectedClinic;
   double _painLevel = 5;
+  bool _loadingFacilities = true;
+  bool _loadingLocation = true;
   bool _isRequesting = false;
-  double _estimatedDistance = 0.0;
+  String? _locationError;
+  GeoPoint? _origin;
+
+  static const _baseFare = 25.0;
+  static const _perKmRate = 2.5;
 
   @override
   void initState() {
     super.initState();
-    _selectedCompany = AmbulanceDataMock.companies.first;
+    _loadFacilities();
+    _resolveLocation();
+  }
+
+  @override
+  void dispose() {
+    _symptomsController.dispose();
+    _historyController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadFacilities() async {
+    try {
+      final clinics = await _catalog.listEmergencyFacilities();
+      if (!mounted) return;
+      setState(() {
+        _facilities = clinics;
+        _loadingFacilities = false;
+        if (clinics.isNotEmpty) _selectedClinic = clinics.first;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingFacilities = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudieron cargar clínicas: $e')),
+      );
+    }
+  }
+
+  Future<void> _resolveLocation() async {
+    setState(() {
+      _loadingLocation = true;
+      _locationError = null;
+    });
+    try {
+      final point = await _location.getCurrentPosition();
+      if (!mounted) return;
+      setState(() {
+        _origin = point;
+        _loadingLocation = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _locationError = e.toString();
+        _loadingLocation = false;
+      });
+    }
+  }
+
+  double get _estimatedDistance {
+    final clinic = _selectedClinic?.location;
+    if (clinic == null || _origin == null) return 5;
+    return GeoMath.distanceKm(_origin!, clinic);
   }
 
   double _calculateFare() {
-    if (_selectedCompany == null || _selectedClinic == null) return 0.0;
-    // Simulación: La distancia varía según la clínica (mockeado)
-    _estimatedDistance = _selectedClinic!.id == 'clinic-001' ? 5.2 : 12.8;
-    return _selectedCompany!.baseRate + (_estimatedDistance * 2.5);
+    if (_selectedClinic == null) return 0;
+    return _baseFare + (_estimatedDistance * _perKmRate);
   }
 
-  void _requestAmbulance() async {
+  Future<void> _requestAmbulance() async {
     if (_selectedClinic == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Por favor, selecciona una clínica de destino'),
-        ),
+        const SnackBar(content: Text('Selecciona una clínica de destino')),
+      );
+      return;
+    }
+    if (_origin == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Esperando tu ubicación...')),
       );
       return;
     }
 
     setState(() => _isRequesting = true);
-    await Future.delayed(const Duration(seconds: 3));
-    if (mounted) {
+    try {
+      final result = await _emergency.create(
+        CreateEmergencyParams(
+          facilityId: _selectedClinic!.id,
+          origin: _origin!,
+          originAddress: _origin.toString(),
+          symptoms: _symptomsController.text.trim(),
+          painLevel: _painLevel.round(),
+          medicalHistory: _historyController.text.trim(),
+        ),
+      );
+      if (!mounted) return;
       setState(() => _isRequesting = false);
-      _showSuccessDialog();
+      _showSuccessDialog(result);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isRequesting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
     }
   }
 
-  void _showSuccessDialog() {
+  void _showSuccessDialog(EmergencyRequest emergency) {
+    final unit = emergency.ambulance?.displayName ?? 'ambulancia';
+    final clinic = emergency.facility?.name ?? _selectedClinic?.name ?? 'clínica';
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -68,30 +156,28 @@ class _AmbulanceCheckoutScreenState extends State<AmbulanceCheckoutScreen> {
           children: [
             Icon(Icons.check_circle, color: Colors.green, size: 60),
             SizedBox(height: 16),
-            Text('¡Unidad Asignada!', textAlign: TextAlign.center),
+            Text('¡Unidad asignada!', textAlign: TextAlign.center),
           ],
         ),
         content: Text(
-          'La unidad VITA-04 de ${_selectedCompany!.name} va en camino a tu ubicación con destino a ${_selectedClinic!.name}.',
+          'La unidad $unit va en camino con destino a $clinic.',
           textAlign: TextAlign.center,
         ),
         actions: [
           ElevatedButton(
             onPressed: () {
-              Navigator.pop(context); // Cerrar diálogo
-              Navigator.of(
-                this.context,
-              ).pushReplacementNamed(AppRoutes.tracking);
+              Navigator.pop(context);
+              Navigator.of(this.context).pushReplacementNamed(
+                AppRoutes.tracking,
+                arguments: {'emergencyId': emergency.id},
+              );
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
               minimumSize: const Size(double.infinity, 50),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
             ),
             child: const Text(
-              'ENTENDIDO',
+              'VER SEGUIMIENTO',
               style: TextStyle(color: Colors.white),
             ),
           ),
@@ -105,396 +191,183 @@ class _AmbulanceCheckoutScreenState extends State<AmbulanceCheckoutScreen> {
     return ResponsiveScaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Solicitar Ambulancia'),
+        title: const Text('Solicitar ambulancia'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new, size: 20),
           onPressed: () => AppNavigation.safeBack(context),
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Mapa de la red',
+            icon: const Icon(Icons.map_rounded),
+            onPressed: () => Navigator.pushNamed(context, AppRoutes.medicalNetworkMap),
+          ),
+        ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
+        padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildStepHeader('1', 'Selecciona la empresa'),
+            _step('1', 'Tu ubicación'),
+            const SizedBox(height: 12),
+            _locationCard(),
+            const SizedBox(height: 28),
+            _step('2', 'Clínica de destino'),
+            const SizedBox(height: 12),
+            _clinicSelector(),
+            const SizedBox(height: 28),
+            _step('3', 'Motivo de la emergencia'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _symptomsController,
+              maxLines: 3,
+              decoration: InputDecoration(
+                hintText: 'Síntomas principales...',
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
             const SizedBox(height: 16),
-            _buildCompanySelector(),
+            _painSlider(),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _historyController,
+              decoration: InputDecoration(
+                labelText: 'Antecedentes médicos',
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+            const SizedBox(height: 28),
+            _step('4', 'Resumen de cotización'),
+            const SizedBox(height: 12),
+            _priceSummary(),
             const SizedBox(height: 32),
-            _buildStepHeader('2', 'Clínica de Destino'),
-            const SizedBox(height: 16),
-            _buildClinicSelector(),
-            const SizedBox(height: 32),
-            _buildStepHeader('3', 'Motivo de la Emergencia'),
-            const SizedBox(height: 16),
-            _buildSymptomsInput(),
-            const SizedBox(height: 24),
-            _buildPainSelector(),
-            const SizedBox(height: 24),
-            _buildHistoryInput(),
-            const SizedBox(height: 32),
-            _buildStepHeader('4', 'Resumen de Cotización'),
-            const SizedBox(height: 16),
-            _buildPriceSummary(),
-            const SizedBox(height: 40),
-            _buildRequestButton(),
+            ElevatedButton(
+              onPressed: (_isRequesting || _loadingLocation) ? null : _requestAmbulance,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.emergency,
+                minimumSize: const Size(double.infinity, 60),
+              ),
+              child: _isRequesting
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : const Text(
+                      'CONFIRMAR SOLICITUD',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildStepHeader(String number, String title) {
-    return Row(
-      children: [
-        Container(
-          width: 28,
-          height: 28,
-          decoration: const BoxDecoration(
-            color: AppColors.primary,
-            shape: BoxShape.circle,
+  Widget _step(String n, String title) => Row(
+        children: [
+          CircleAvatar(
+            radius: 14,
+            backgroundColor: AppColors.primary,
+            child: Text(n, style: const TextStyle(color: Colors.white, fontSize: 12)),
           ),
-          child: Center(
+          const SizedBox(width: 10),
+          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        ],
+      );
+
+  Widget _locationCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+      child: Row(
+        children: [
+          Icon(_loadingLocation ? Icons.gps_not_fixed : Icons.gps_fixed, color: AppColors.primary),
+          const SizedBox(width: 12),
+          Expanded(
             child: Text(
-              number,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
+              _loadingLocation
+                  ? 'Obteniendo ubicación...'
+                  : (_locationError != null
+                      ? 'Error de ubicación: $_locationError'
+                      : (_origin?.toString() ?? 'Sin ubicación')),
+              style: TextStyle(
+                color: _locationError != null ? AppColors.emergency : null,
               ),
             ),
           ),
-        ),
-        const SizedBox(width: 12),
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: AppColors.textPrimary,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCompanySelector() {
-    return Column(
-      children: AmbulanceDataMock.companies.map((company) {
-        bool isSelected = _selectedCompany?.id == company.id;
-        return GestureDetector(
-          onTap: () => setState(() => _selectedCompany = company),
-          child: Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: isSelected
-                  ? AppColors.primary.withValues(alpha: 0.05)
-                  : Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: isSelected ? AppColors.primary : Colors.transparent,
-                width: 2,
-              ),
-            ),
-            child: Row(
-              children: [
-                SafeAvatar(radius: 24, imageUrl: company.logoUrl),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Text(
-                    company.name,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ),
-                if (isSelected)
-                  const Icon(Icons.check_circle, color: AppColors.primary),
-              ],
-            ),
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  Widget _buildClinicSelector() {
-    // Solo mostramos clínicas con Sala de Emergencia (ER)
-    final erClinics = ClinicDataMock.clinics
-        .where((c) => c.hasEmergencyRoom)
-        .toList();
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
-          ),
+          if (!_loadingLocation)
+            IconButton(onPressed: _resolveLocation, icon: const Icon(Icons.refresh_rounded)),
         ],
       ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<AlliedClinic>(
-          isExpanded: true,
-          hint: const Text('Selecciona una clínica'),
-          value: _selectedClinic,
-          items: erClinics.map((clinic) {
-            return DropdownMenuItem(
-              value: clinic,
-              child: Text(clinic.name, style: const TextStyle(fontSize: 14)),
-            );
-          }).toList(),
-          onChanged: (val) => setState(() => _selectedClinic = val),
-        ),
-      ),
     );
   }
 
-  Widget _buildSymptomsInput() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
-          ),
-        ],
+  Widget _clinicSelector() {
+    if (_loadingFacilities) return const Center(child: CircularProgressIndicator());
+    if (_facilities.isEmpty) return const Text('No hay clínicas con urgencias.');
+    return DropdownButtonFormField<MedicalFacility>(
+      initialValue: _selectedClinic,
+      decoration: InputDecoration(
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
       ),
+      items: _facilities
+          .map((c) => DropdownMenuItem(value: c, child: Text(c.name)))
+          .toList(),
+      onChanged: (v) => setState(() => _selectedClinic = v),
+    );
+  }
+
+  Widget _painSlider() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
-            children: [
-              Icon(
-                Icons.report_problem_outlined,
-                color: Colors.orange,
-                size: 20,
-              ),
-              SizedBox(width: 12),
-              Text(
-                '¿Qué síntomas presenta el paciente?',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _symptomsController,
-            maxLines: 3,
-            decoration: InputDecoration(
-              hintText:
-                  'Ej: Dolor abdominal fuerte, dificultad para respirar...',
-              filled: true,
-              fillColor: AppColors.background,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide.none,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPainSelector() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Nivel de Dolor / Malestar',
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Text(
-                'Leve',
-                style: TextStyle(color: Colors.green.shade700, fontSize: 12),
-              ),
-              const Spacer(),
-              Text(
-                'Severo',
-                style: TextStyle(color: Colors.red.shade700, fontSize: 12),
-              ),
-            ],
-          ),
+          const Text('Nivel de dolor', style: TextStyle(fontWeight: FontWeight.bold)),
           Slider(
             value: _painLevel,
             min: 1,
             max: 10,
             divisions: 9,
-            activeColor: Color.lerp(Colors.green, Colors.red, _painLevel / 10),
-            onChanged: (val) => setState(() => _painLevel = val),
+            onChanged: (v) => setState(() => _painLevel = v),
           ),
-          Center(
-            child: Text(
-              'Escala: ${_painLevel.toInt()} / 10',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Color.lerp(Colors.green, Colors.red, _painLevel / 10),
-              ),
-            ),
-          ),
+          Center(child: Text('${_painLevel.round()} / 10')),
         ],
       ),
     );
   }
 
-  Widget _buildHistoryInput() {
+  Widget _priceSummary() {
+    final subtotal = _calculateFare();
+    if (subtotal == 0) return const SizedBox.shrink();
+    final breakdown = InsuranceCalculator.calculateCopay(subtotal: subtotal, category: 'ambulance');
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Antecedentes Médicos',
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _historyController,
-            decoration: InputDecoration(
-              hintText:
-                  'Ej: Hipertenso, Diabético, Alérgico a la Penicilina...',
-              filled: true,
-              fillColor: AppColors.background,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide.none,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPriceSummary() {
-    final subtotal = _calculateFare();
-    if (subtotal == 0) return const SizedBox.shrink();
-
-    final breakdown = InsuranceCalculator.calculateCopay(
-      subtotal: subtotal,
-      category: 'ambulance',
-    );
-
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
         color: const Color(0xFF1E293B),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 15,
-          ),
-        ],
+        borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
         children: [
-          _buildSummaryRow(
-            'Subtotal del Servicio',
-            '\$${subtotal.toStringAsFixed(2)}',
-            isBold: false,
-          ),
-          const SizedBox(height: 12),
-          _buildSummaryRow(
-            'Cobertura Seguro (${(breakdown['percentage']! * 100).toInt()}%)',
-            '-\$${breakdown['coveredAmount']!.toStringAsFixed(2)}',
-            isBold: false,
-            valueColor: Colors.greenAccent,
-          ),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
-            child: Divider(color: Colors.white10),
-          ),
-          _buildSummaryRow(
-            'Total a Pagar (Copago)',
-            '\$${breakdown['totalToPay']!.toStringAsFixed(2)}',
-            isBold: true,
-            fontSize: 22,
-          ),
-          const SizedBox(height: 8),
+          Text('Copago estimado: \$${breakdown['totalToPay']!.toStringAsFixed(2)}',
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           Text(
-            'Distancia estimada: ${_estimatedDistance.toStringAsFixed(1)} KM',
-            style: const TextStyle(color: Colors.white38, fontSize: 10),
+            'Distancia ~${_estimatedDistance.toStringAsFixed(1)} km',
+            style: const TextStyle(color: Colors.white38, fontSize: 11),
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildSummaryRow(
-    String label,
-    String value, {
-    bool isBold = false,
-    Color valueColor = Colors.white,
-    double fontSize = 14,
-  }) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          label,
-          style: TextStyle(color: Colors.white70, fontSize: fontSize * 0.8),
-        ),
-        Text(
-          value,
-          style: TextStyle(
-            color: valueColor,
-            fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
-            fontSize: fontSize,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildRequestButton() {
-    return ElevatedButton(
-      onPressed: _isRequesting ? null : _requestAmbulance,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: AppColors.emergency,
-        minimumSize: const Size(double.infinity, 64),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        elevation: 0,
-      ),
-      child: _isRequesting
-          ? const CircularProgressIndicator(color: Colors.white)
-          : const Text(
-              'CONFIRMAR SOLICITUD',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
     );
   }
 }

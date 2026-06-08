@@ -178,15 +178,22 @@ class _ClinicAssignDoctorPageState extends State<ClinicAssignDoctorPage>
   }
 
   Future<void> _unassign(ClinicDoctorListItem doctor) async {
+    final onlyHere = doctor.facilityNames.length <= 1;
+
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Desvincular médico'),
+        title: Text(onlyHere ? 'Eliminar médico' : 'Desvincular médico'),
         content: Text(
-          '¿Quitar a ${doctor.name} de esta clínica?\n\n'
-          'Seguirá en el sistema y podrá atender en otras sedes, '
-          'pero ya no aparecerá en tu clínica hasta que acepte una nueva invitación.',
+          onlyHere
+              ? '¿Eliminar la cuenta de ${doctor.name}?\n\n'
+                  'Solo está vinculado a esta clínica. '
+                  'Un médico debe pertenecer al menos a una sede; '
+                  'al eliminarlo dejará de existir en el sistema.'
+              : '¿Quitar a ${doctor.name} de esta clínica?\n\n'
+                  'Seguirá en el sistema y podrá atender en otras sedes, '
+                  'pero ya no aparecerá aquí hasta que acepte una nueva invitación.',
         ),
         actions: [
           TextButton(
@@ -196,7 +203,7 @@ class _ClinicAssignDoctorPageState extends State<ClinicAssignDoctorPage>
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Desvincular'),
+            child: Text(onlyHere ? 'Eliminar cuenta' : 'Desvincular'),
           ),
         ],
       ),
@@ -205,11 +212,17 @@ class _ClinicAssignDoctorPageState extends State<ClinicAssignDoctorPage>
 
     setState(() => _removingId = doctor.userId);
     try {
-      await _api.unassignDoctor(doctor.userId);
+      await _api.unassignDoctor(doctor.userId, deleteAccount: onlyHere);
       if (!mounted) return;
       _changesMade = true;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${doctor.name} desvinculado de la clínica')),
+        SnackBar(
+          content: Text(
+            onlyHere
+                ? 'Cuenta de ${doctor.name} eliminada'
+                : '${doctor.name} desvinculado de la clínica',
+          ),
+        ),
       );
       await Future.wait([_loadAssignable(), _loadInClinic()]);
     } on ApiException catch (e) {

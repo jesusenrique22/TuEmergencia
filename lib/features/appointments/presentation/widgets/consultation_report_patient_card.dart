@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import '../../../../core/config/api_config.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/network/api_url.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../data/appointment_api_service.dart';
 import '../../../medical_history/domain/models/patient_medical_document.dart';
@@ -36,9 +36,7 @@ class _ConsultationReportPatientCardState
   ConsultationReport get report => appt.consultationReport!;
 
   String _fullUrl(String path) {
-    if (path.startsWith('http')) return path;
-    final base = ApiConfig.baseUrl.replaceAll(RegExp(r'/+$'), '');
-    return '$base$path';
+    return ApiUrl.resolve(path);
   }
 
   Future<void> _acknowledge() async {

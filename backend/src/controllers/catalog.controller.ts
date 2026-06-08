@@ -51,6 +51,91 @@ export const listDoctors = async (req: Request, res: Response) => {
   );
 };
 
+export const listMapPois = async (_req: Request, res: Response) => {
+  const [facilities, laboratories, pharmacies, ambulances] = await Promise.all([
+    prisma.medicalFacility.findMany({
+      where: { isActive: true, serviceEnabled: true },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        address: true,
+        city: true,
+        phone: true,
+        latitude: true,
+        longitude: true,
+        hasEmergencyRoom: true,
+      },
+      orderBy: { name: 'asc' },
+    }),
+    prisma.laboratory.findMany({
+      where: { isActive: true, serviceEnabled: true },
+      select: {
+        id: true,
+        name: true,
+        address: true,
+        phone: true,
+        latitude: true,
+        longitude: true,
+      },
+      orderBy: { name: 'asc' },
+    }),
+    prisma.pharmacy.findMany({
+      where: { isActive: true, serviceEnabled: true },
+      select: {
+        id: true,
+        name: true,
+        address: true,
+        phone: true,
+        latitude: true,
+        longitude: true,
+      },
+      orderBy: { name: 'asc' },
+    }),
+    prisma.ambulanceUnit.findMany({
+      where: {
+        isActive: true,
+        latitude: { not: null },
+        longitude: { not: null },
+      },
+      include: {
+        facility: { select: { name: true, address: true } },
+        driver: { select: { name: true, phone: true } },
+      },
+      orderBy: { callSign: 'asc' },
+    }),
+  ]);
+
+  res.json({
+    facilities: facilities.map((f) => ({
+      ...toApiDoc(f),
+      poiType: 'CLINIC',
+    })),
+    laboratories: laboratories.map((l) => ({
+      ...toApiDoc(l),
+      poiType: 'LABORATORY',
+    })),
+    pharmacies: pharmacies.map((p) => ({
+      ...toApiDoc(p),
+      poiType: 'PHARMACY',
+    })),
+    ambulances: ambulances.map((a) => ({
+      id: a.id,
+      name: a.callSign ?? a.plateNumber,
+      plateNumber: a.plateNumber,
+      callSign: a.callSign,
+      address: a.facility?.address ?? a.facility?.name ?? '',
+      facilityName: a.facility?.name ?? '',
+      latitude: a.latitude,
+      longitude: a.longitude,
+      status: a.status,
+      driverName: a.driver?.name ?? null,
+      driverPhone: a.driver?.phone ?? null,
+      poiType: 'AMBULANCE',
+    })),
+  });
+};
+
 export const doctorAvailability = async (req: Request, res: Response) => {
   const { doctorId } = req.params;
   const date = req.query.date as string;

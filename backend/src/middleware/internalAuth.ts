@@ -1,7 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 
-const INTERNAL_SECRET =
-  process.env.INTERNAL_REALTIME_SECRET || 'smart-medic-internal-dev';
+import { internalRealtimeSecret } from '../config/secrets';
+
+const INTERNAL_SECRET = internalRealtimeSecret();
 
 export function requireInternalRealtimeAuth(
   req: Request,

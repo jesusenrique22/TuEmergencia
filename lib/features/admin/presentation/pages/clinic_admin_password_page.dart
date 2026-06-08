@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/auth/app_session.dart';
+import '../../../../core/navigation/app_navigation.dart';
+import '../../../../core/navigation/app_routes.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/profile_ui.dart';
@@ -44,20 +46,35 @@ class _ClinicAdminPasswordPageState extends State<ClinicAdminPasswordPage> {
         newPassword: _newController.text,
       );
       if (!mounted) return;
+      _currentController.clear();
+      _newController.clear();
+      _confirmController.clear();
+      setState(() => _saving = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Contraseña actualizada'),
           backgroundColor: AppColors.secondary,
         ),
       );
-      Navigator.pop(context);
+      AppNavigation.safeBack(
+        context,
+        fallbackRoute: AppRoutes.clinicAdminDashboard,
+      );
     } on ApiException catch (e) {
       if (!mounted) return;
+      setState(() => _saving = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.message), backgroundColor: Colors.red),
       );
-    } finally {
-      if (mounted) setState(() => _saving = false);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No se pudo cambiar la contraseña: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -69,7 +86,16 @@ class _ClinicAdminPasswordPageState extends State<ClinicAdminPasswordPage> {
 
     return ResponsiveScaffold(
       backgroundColor: AppColors.background,
-      title: const Text('Mi perfil'),
+      appBar: AppBar(
+        title: const Text('Mi perfil'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new, size: 20),
+          onPressed: () => AppNavigation.safeBack(
+            context,
+            fallbackRoute: AppRoutes.clinicAdminDashboard,
+          ),
+        ),
+      ),
       body: ProfileScreenLayout(
         children: [
           ProfileGradientHeader(

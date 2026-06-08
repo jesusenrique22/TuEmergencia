@@ -84,14 +84,22 @@ class _ClinicAdminDashboardState extends State<ClinicAdminDashboard> {
   }
 
   Future<void> _unassignDoctor(ClinicDoctorListItem doctor) async {
+    final onlyHere = doctor.facilityNames.length <= 1;
+    final facilityName = _data?.facilityName ?? 'esta clínica';
+
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Desvincular médico'),
+        title: Text(onlyHere ? 'Eliminar médico' : 'Desvincular médico'),
         content: Text(
-          '¿Quitar a ${doctor.name} de ${_data?.facilityName ?? 'esta clínica'}?\n\n'
-          'Seguirá en el sistema y en sus otras sedes, pero no atenderá aquí.',
+          onlyHere
+              ? '¿Eliminar la cuenta de ${doctor.name}?\n\n'
+                  'Solo está vinculado a $facilityName. '
+                  'Todo médico debe pertenecer al menos a una clínica; '
+                  'al eliminarlo dejará de existir en el sistema.'
+              : '¿Quitar a ${doctor.name} de $facilityName?\n\n'
+                  'Seguirá en el sistema y en sus otras sedes, pero no atenderá aquí.',
         ),
         actions: [
           TextButton(
@@ -101,7 +109,7 @@ class _ClinicAdminDashboardState extends State<ClinicAdminDashboard> {
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Desvincular'),
+            child: Text(onlyHere ? 'Eliminar cuenta' : 'Desvincular'),
           ),
         ],
       ),
@@ -109,10 +117,16 @@ class _ClinicAdminDashboardState extends State<ClinicAdminDashboard> {
     if (ok != true) return;
 
     try {
-      await _api.unassignDoctor(doctor.userId);
+      await _api.unassignDoctor(doctor.userId, deleteAccount: onlyHere);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${doctor.name} desvinculado')),
+        SnackBar(
+          content: Text(
+            onlyHere
+                ? 'Cuenta de ${doctor.name} eliminada'
+                : '${doctor.name} desvinculado',
+          ),
+        ),
       );
       _load();
     } on ApiException catch (e) {
@@ -266,6 +280,16 @@ class _ClinicAdminDashboardState extends State<ClinicAdminDashboard> {
               AppRoutes.adminCreateDoctor,
             );
             if (created == true) _load();
+          },
+        ),
+        const SizedBox(height: 10),
+        _actionTile(
+          icon: Icons.emergency_rounded,
+          title: 'Movilización sanitaria',
+          subtitle: 'Unidades, conductores y traslados de emergencia de tu sede',
+          color: AppColors.emergency,
+          onTap: () {
+            Navigator.pushNamed(context, AppRoutes.clinicAmbulanceFleet);
           },
         ),
         const SizedBox(height: 10),
@@ -478,8 +502,15 @@ class _ClinicAdminDashboardState extends State<ClinicAdminDashboard> {
           ],
         ),
         trailing: IconButton(
-          tooltip: 'Desvincular de esta clínica',
-          icon: const Icon(Icons.link_off_rounded, color: Colors.red),
+          tooltip: doctor.facilityNames.length <= 1
+              ? 'Eliminar médico del sistema'
+              : 'Desvincular de esta clínica',
+          icon: Icon(
+            doctor.facilityNames.length <= 1
+                ? Icons.person_remove_rounded
+                : Icons.link_off_rounded,
+            color: Colors.red,
+          ),
           onPressed: () => _unassignDoctor(doctor),
         ),
       ),

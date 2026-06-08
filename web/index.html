@@ -18,21 +18,58 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="description" content="Smart Medic — salud, citas y emergencias en una sola plataforma.">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="smartmedic">
+  <meta name="apple-mobile-web-app-title" content="Smart Medic">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>smartmedic</title>
+  <title>Smart Medic</title>
   <link rel="manifest" href="manifest.json">
+  <style>
+    #vita-loading {
+      position: fixed; inset: 0; z-index: 9999;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: linear-gradient(160deg, #0f172a 0%, #1e3a5f 50%, #2563eb 100%);
+      color: #fff; font-family: system-ui, sans-serif;
+    }
+    #vita-loading .spinner {
+      width: 40px; height: 40px; border: 3px solid rgba(255,255,255,.25);
+      border-top-color: #fff; border-radius: 50%;
+      animation: vita-spin .8s linear infinite;
+    }
+    @keyframes vita-spin { to { transform: rotate(360deg); } }
+  </style>
 </head>
 <body>
+  <div id="vita-loading"><div class="spinner"></div><p style="margin-top:16px;opacity:.85">Cargando Smart Medic…</p></div>
+  <!-- Dev Tunnel: evita caché obsoleta que obliga a recargar varias veces -->
+  <script>
+    (function () {
+      var h = location.hostname;
+      if (h.indexOf('devtunnels.ms') === -1 && h.indexOf('localhost') === -1 && h.indexOf('127.0.0.1') === -1) return;
+      if (!('serviceWorker' in navigator)) return;
+      navigator.serviceWorker.getRegistrations().then(function (regs) {
+        regs.forEach(function (r) { r.unregister(); });
+      });
+      if ('caches' in window) {
+        caches.keys().then(function (keys) {
+          keys.forEach(function (k) { caches.delete(k); });
+        });
+      }
+    })();
+  </script>
+  <script>
+    window.addEventListener('flutter-first-frame', function () {
+      var el = document.getElementById('vita-loading');
+      if (el) el.remove();
+    });
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

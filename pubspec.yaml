@@ -30,6 +30,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
@@ -80,6 +82,24 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.3
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/branding/logo_icon.png
+  min_sdk_android: 21
+  web:
+    generate: true
+    image_path: assets/branding/logo_icon.png
+    background_color: "#000000"
+    theme_color: "#2563EB"
+  windows:
+    generate: true
+    image_path: assets/branding/logo_icon.png
+  macos:
+    generate: true
+    image_path: assets/branding/logo_icon.png
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -96,6 +116,8 @@ flutter:
   uses-material-design: true
   assets:
     - .env
+    - assets/branding/logo_icon.png
+    - web/Smart Medic.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:

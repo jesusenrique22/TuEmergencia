@@ -1,65 +1,74 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+
+import '../../../../core/di/service_locator.dart';
 import '../../../../core/navigation/app_navigation.dart';
+import '../../../../core/services/app_realtime.dart';
 import '../../../../core/theme/app_colors.dart';
-import '../../../../core/widgets/safe_avatar.dart';
+import '../../application/emergency_tracking_controller.dart';
+import '../widgets/emergency_status_sheet.dart';
+import '../widgets/emergency_tracking_map.dart';
 
 class AmbulanceTracking extends StatefulWidget {
   final String emergencyId;
-  const AmbulanceTracking({super.key, this.emergencyId = 'mock_id'});
+  const AmbulanceTracking({super.key, this.emergencyId = ''});
 
   @override
   State<AmbulanceTracking> createState() => _AmbulanceTrackingState();
 }
 
 class _AmbulanceTrackingState extends State<AmbulanceTracking> {
+  late final EmergencyTrackingController _controller;
   final MapController _mapController = MapController();
 
-  static const LatLng _patientLocation = LatLng(10.4806, -66.9036);
-  LatLng ambulancePos = const LatLng(10.4820, -66.9050);
-  String status = 'En ruta';
-  int eta = 5;
+  @override
+  void initState() {
+    super.initState();
+    _controller = sl<EmergencyTrackingController>();
+    _controller.addListener(_onChanged);
+    unawaited(AppRealtime.connectIfNeeded());
+    unawaited(_controller.start(widget.emergencyId));
+  }
+
+  void _onChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_onChanged);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _cancel() async {
+    await _controller.cancel();
+    if (!mounted) return;
+    AppNavigation.safeBack(context);
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_controller.loading && _controller.emergency == null) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    if (_controller.error != null && _controller.emergency == null) {
+      return Scaffold(
+        appBar: AppBar(),
+        body: Center(child: Text(_controller.error!)),
+      );
+    }
+
+    final emergency = _controller.emergency!;
+    final driver = emergency.ambulance?.driver;
+
     return Stack(
       children: [
-        FlutterMap(
-          mapController: _mapController,
-          options: const MapOptions(
-            initialCenter: _patientLocation,
-            initialZoom: 15,
-          ),
-          children: [
-            TileLayer(
-              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              userAgentPackageName: 'com.example.smartmedic',
-            ),
-            MarkerLayer(
-              markers: [
-                Marker(
-                  point: _patientLocation,
-                  width: 40,
-                  height: 40,
-                  child: const Icon(
-                    Icons.location_on,
-                    color: Colors.red,
-                    size: 40,
-                  ),
-                ),
-                Marker(
-                  point: ambulancePos,
-                  width: 50,
-                  height: 50,
-                  child: const Icon(
-                    Icons.medical_services,
-                    color: AppColors.primary,
-                    size: 40,
-                  ),
-                ),
-              ],
-            ),
-          ],
+        EmergencyTrackingMap(
+          controller: _mapController,
+          request: emergency,
         ),
         Positioned(
           top: 40,
@@ -74,127 +83,26 @@ class _AmbulanceTrackingState extends State<AmbulanceTracking> {
         ),
         Align(
           alignment: Alignment.bottomCenter,
-          child: _buildBottomSheet(context, status, eta),
+          child: EmergencyStatusSheet(
+            statusLabel: emergency.status.label,
+            etaMinutes: emergency.etaMinutes ?? 5,
+            driverName: driver?.name ?? 'Conductor asignado',
+            unitLabel: emergency.ambulance?.displayName ?? '—',
+            profilePic: driver?.profilePic,
+            cancelling: _controller.cancelling,
+            onCall: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Llamada a ${emergency.ambulance?.displayName ?? 'unidad'} (WebRTC próximamente)',
+                  ),
+                ),
+              );
+            },
+            onCancel: _cancel,
+          ),
         ),
       ],
-    );
-  }
-
-  Widget _buildBottomSheet(BuildContext context, String status, int eta) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black12,
-            blurRadius: 20,
-            offset: Offset(0, -5),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 40,
-            height: 4,
-            margin: const EdgeInsets.only(bottom: 20),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade300,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          Text(
-            status,
-            style: const TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: AppColors.primaryLight,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              'Llegada en $eta minutos',
-              style: const TextStyle(
-                color: AppColors.primary,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-          Row(
-            children: [
-              SafeAvatar(
-                radius: 28,
-                imageUrl: 'https://i.pravatar.cc/150?u=carlos',
-              ),
-              const SizedBox(width: 16),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Carlos Ruiz',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    Row(
-                      children: [
-                        Icon(Icons.star, color: Colors.amber, size: 16),
-                        Expanded(
-                          child: Text(
-                            ' 4.9 • Unidad VITA-04',
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              CircleAvatar(
-                backgroundColor: AppColors.primaryLight,
-                child: IconButton(
-                  icon: const Icon(Icons.phone, color: AppColors.primary),
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Conectando llamada con la unidad VITA-04',
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red.shade50,
-                foregroundColor: Colors.red,
-                elevation: 0,
-              ),
-              onPressed: () => AppNavigation.safeBack(context),
-              child: const Text('Cancelar Solicitud'),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

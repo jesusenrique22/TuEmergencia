@@ -18,4 +18,6 @@ enum Role {
   labTech,
   radiologyTech,
   driver,
+  paramedic,
+  ambulanceNurse,
 }

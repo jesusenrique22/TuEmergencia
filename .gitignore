@@ -7,6 +7,7 @@ backend/uploads/
 # Miscellaneous
 *.class
 *.log
+.dev-*.log
 build_error*.txt
 *.pyc
 *.swp
@@ -26,9 +27,12 @@ Thumbs.db
 *.iws
 .idea/
 
-# VS Code (local settings; commit launch.json manually if the team shares it)
+# VS Code (local settings; commit shared launch/tasks/settings)
 .vscode/*
 !.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/settings.json
+!.vscode/extensions.json
 
 # Flutter / Dart / Pub
 **/doc/api/
@@ -39,7 +43,7 @@ Thumbs.db
 .pub-cache/
 .pub/
 /build/
-/coverage/
+**/coverage/
 *.g.dart.bak
 
 # Flutter web build (scripts/serve-web-tunnel.sh, run-web-lan.sh)
@@ -53,13 +57,32 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+/android/.gradle/
+*.apk
+*.aab
+
+# iOS / macOS build artifacts
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Rutas locales opcionales (copia desde config/local-paths.env.example)
+config/local-paths.env
+!config/local-paths.env.example
+android/local.properties
+!android/local.properties.example
 
 # Environment / secrets (never commit real values)
 .env
 .env.*
-!.env.example
+!**/.env.example
 .env.local
 .env.*.local
+
+# Signing keys (never commit)
+key.properties
+**/*.keystore
+**/*.jks
 
 # pnpm store at repo root (if created locally)
 .pnpm-store/
@@ -67,6 +90,8 @@ app.*.map.json
 # Node.js — backend, realtime-gateway, and any service folder
 **/node_modules/
 **/dist/
+**/package-lock.json
+**/yarn.lock
 
 # TypeScript build info
 *.tsbuildinfo
@@ -86,6 +111,10 @@ __pycache__/
 .Python
 .venv/
 venv/
+
+# Docker local overrides
+docker-compose.override.yml
+**/docker-compose.override.yml
 
 # Local databases / dumps (dev only)
 *.sqlite

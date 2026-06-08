@@ -3,11 +3,9 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:http/http.dart' as http;
-
 import '../auth/app_session.dart';
 import '../config/api_config.dart';
-import '../network/gateway_health.dart';
+import '../connectivity/service_connectivity.dart';
 import '../services/app_realtime.dart';
 import '../services/active_call_service.dart';
 import 'realtime_debug_log.dart';
@@ -70,11 +68,11 @@ class GatewayDebugDiagnostics {
       ),
       DiagnosticLine(
         label: 'DEV_HOST (.env)',
-        value: ApiConfig.devHost ?? '(vacío — necesario para web/móvil en LAN)',
+        value: ApiConfig.devHost ?? '(opcional si abres http://IP:8088 en LAN)',
       ),
       DiagnosticLine(
         label: 'URL app (LAN)',
-        value: ApiConfig.lanWebAppUrl ?? '(define DEV_HOST + FLUTTER_WEB_PORT)',
+        value: ApiConfig.lanWebAppUrl ?? ApiConfig.connectivityHint,
       ),
       DiagnosticLine(
         label: 'Puerto web',
@@ -148,42 +146,19 @@ class GatewayDebugDiagnostics {
   }
 
   static Future<List<DiagnosticLine>> _httpLines() async {
-    final backendUri = Uri.parse('${ApiConfig.baseUrl}/health');
-    final gatewayCheck = await checkGatewayHealthDetailed();
-
-    _log.log(
-      'HTTP',
-      'Backend ${backendUri.host}:${backendUri.port}',
-      level: gatewayCheck.reachable
-          ? RealtimeDebugLevel.success
-          : RealtimeDebugLevel.warn,
-      detail: 'gateway health: ${gatewayCheck.summary}',
-    );
-
-    String backendResult;
-    bool? backendOk;
-    try {
-      final sw = Stopwatch()..start();
-      final res = await http.get(backendUri).timeout(const Duration(seconds: 5));
-      sw.stop();
-      backendOk = res.statusCode == 200;
-      backendResult =
-          'HTTP ${res.statusCode} en ${sw.elapsedMilliseconds}ms — ${res.body.length > 120 ? '${res.body.substring(0, 120)}…' : res.body}';
-    } catch (e) {
-      backendOk = false;
-      backendResult = e.toString();
-      _log.log('HTTP', 'Backend no alcanzable', level: RealtimeDebugLevel.error, detail: e);
-    }
+    final connectivity = ServiceConnectivity.instance;
+    final apiCheck = await connectivity.checkApiHealth(useCache: false);
+    final gatewayCheck = await connectivity.checkGatewayHealth(useCache: false);
 
     return [
       DiagnosticLine(
         label: 'Backend /health',
-        value: backendResult,
-        ok: backendOk,
+        value: apiCheck.summary,
+        ok: apiCheck.reachable,
       ),
       DiagnosticLine(
-        label: 'Gateway /health',
-        value: gatewayCheck.summary,
+        label: 'Gateway health',
+        value: '${ApiConfig.gatewayHealthUrl}\n${gatewayCheck.summary}',
         ok: gatewayCheck.reachable,
       ),
     ];

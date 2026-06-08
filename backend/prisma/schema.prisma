@@ -45,6 +45,13 @@ model User {
   medicalDocuments    PatientMedicalDocument[]
   pharmacyOrders      PharmacyOrder[]
   consultationTemplates DoctorConsultationTemplate[]
+  ambulanceUnitsAsDriver    AmbulanceUnit[] @relation("AmbulanceDriver")
+  ambulanceUnitsAsParamedic AmbulanceUnit[] @relation("AmbulanceParamedic")
+  ambulanceUnitsAsNurse     AmbulanceUnit[] @relation("AmbulanceNurse")
+  ambulanceStaffProfile     AmbulanceStaffProfile?
+  emergencyRequests   EmergencyRequest[]    @relation("EmergencyPatient")
+  emergencyMessages   EmergencyChatMessage[]
+  transitMedicalLogs  TransitMedicalLog[]
 
   @@index([role])
   @@map("users")
@@ -186,18 +193,21 @@ model MedicalFacility {
   address        String
   city           String?
   phone          String?
-  latitude       Float?
-  longitude      Float?
-  isActive       Boolean  @default(true) @map("is_active")
-  serviceEnabled Boolean  @default(true) @map("service_enabled")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  latitude          Float?
+  longitude         Float?
+  hasEmergencyRoom  Boolean  @default(false) @map("has_emergency_room")
+  isActive          Boolean  @default(true) @map("is_active")
+  serviceEnabled    Boolean  @default(true) @map("service_enabled")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
-  admins         User[]                  @relation("FacilityAdmin")
-  doctorLinks    DoctorProfileFacility[]
-  schedules      DoctorWorkSchedule[]
-  appointments   Appointment[]
-  invitations    ClinicInvitation[]
+  admins            User[]                  @relation("FacilityAdmin")
+  doctorLinks       DoctorProfileFacility[]
+  schedules         DoctorWorkSchedule[]
+  appointments      Appointment[]
+  invitations       ClinicInvitation[]
+  ambulanceUnits    AmbulanceUnit[]
+  emergencyRequests EmergencyRequest[]
 
   @@map("medical_facilities")
 }
@@ -431,6 +441,8 @@ model Pharmacy {
   address        String
   logoUrl        String?  @map("logo_url")
   phone          String?
+  latitude       Float?
+  longitude      Float?
   isActive       Boolean  @default(true) @map("is_active")
   serviceEnabled Boolean  @default(true) @map("service_enabled")
   createdAt      DateTime @default(now()) @map("created_at")
@@ -449,6 +461,8 @@ model Laboratory {
   address        String
   logoUrl        String?  @map("logo_url")
   phone          String?
+  latitude       Float?
+  longitude      Float?
   isActive       Boolean  @default(true) @map("is_active")
   serviceEnabled Boolean  @default(true) @map("service_enabled")
   createdAt      DateTime @default(now()) @map("created_at")
@@ -457,6 +471,109 @@ model Laboratory {
   staff User[]
 
   @@map("laboratories")
+}
+
+model AmbulanceUnit {
+  id          String    @id @default(cuid())
+  facilityId  String    @map("facility_id")
+  plateNumber String    @map("plate_number")
+  callSign    String?   @map("call_sign")
+  driverId    String?   @map("driver_id")
+  paramedicId String?   @map("paramedic_id")
+  nurseId     String?   @map("nurse_id")
+  status      String    @default("AVAILABLE")
+  latitude    Float?
+  longitude   Float?
+  lastSeenAt  DateTime? @map("last_seen_at")
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  facility MedicalFacility    @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  driver    User?              @relation("AmbulanceDriver", fields: [driverId], references: [id])
+  paramedic User?              @relation("AmbulanceParamedic", fields: [paramedicId], references: [id])
+  nurse     User?              @relation("AmbulanceNurse", fields: [nurseId], references: [id])
+  requests  EmergencyRequest[]
+
+  @@index([facilityId, status])
+  @@map("ambulance_units")
+}
+
+model AmbulanceStaffProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique @map("user_id")
+  licenseNumber   String?  @map("license_number")
+  certification   String?
+  bio             String?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("ambulance_staff_profiles")
+}
+
+model EmergencyRequest {
+  id              String    @id @default(cuid())
+  patientId       String    @map("patient_id")
+  facilityId      String    @map("facility_id")
+  ambulanceUnitId String?   @map("ambulance_unit_id")
+  originLat       Float     @map("origin_lat")
+  originLng       Float     @map("origin_lng")
+  originAddress   String?   @map("origin_address")
+  symptoms        String?
+  painLevel       Int?      @map("pain_level")
+  medicalHistory  String?   @map("medical_history")
+  status          String    @default("REQUESTED")
+  quotedCost      Float?    @map("quoted_cost")
+  etaMinutes      Int?      @map("eta_minutes")
+  ambulanceLat    Float?    @map("ambulance_lat")
+  ambulanceLng    Float?    @map("ambulance_lng")
+  requestedAt     DateTime  @default(now()) @map("requested_at")
+  completedAt     DateTime? @map("completed_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  patient   User                   @relation("EmergencyPatient", fields: [patientId], references: [id])
+  facility  MedicalFacility        @relation(fields: [facilityId], references: [id])
+  ambulance AmbulanceUnit?         @relation(fields: [ambulanceUnitId], references: [id])
+  messages  EmergencyChatMessage[]
+  transitLogs TransitMedicalLog[]
+
+  @@index([patientId, status])
+  @@index([facilityId, status])
+  @@map("emergency_requests")
+}
+
+model EmergencyChatMessage {
+  id                 String   @id @default(cuid())
+  emergencyRequestId String   @map("emergency_request_id")
+  senderId           String   @map("sender_id")
+  text               String   @default("")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  emergency EmergencyRequest @relation(fields: [emergencyRequestId], references: [id], onDelete: Cascade)
+  sender    User             @relation(fields: [senderId], references: [id])
+
+  @@index([emergencyRequestId, createdAt])
+  @@map("emergency_chat_messages")
+}
+
+model TransitMedicalLog {
+  id                 String   @id @default(cuid())
+  emergencyRequestId String   @map("emergency_request_id")
+  recordedById       String   @map("recorded_by_id")
+  bloodPressure      String?  @map("blood_pressure")
+  heartRate          Int?     @map("heart_rate")
+  saturation         Int?
+  temperature        Float?
+  notes              String?
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  emergency  EmergencyRequest @relation(fields: [emergencyRequestId], references: [id], onDelete: Cascade)
+  recordedBy User             @relation(fields: [recordedById], references: [id])
+
+  @@index([emergencyRequestId, createdAt])
+  @@map("transit_medical_logs")
 }
 
 model PharmacyProduct {

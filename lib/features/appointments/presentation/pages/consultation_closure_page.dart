@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../../core/network/api_client.dart';
+import '../../../../core/services/app_notifications.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/app_design.dart';
 import '../../data/appointment_api_service.dart';
@@ -356,6 +357,7 @@ class _ConsultationClosurePageState extends State<ConsultationClosurePage> {
       );
 
       if (!mounted) return;
+      AppNotifications.requestRefresh();
       Navigator.pop(context, true);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -388,11 +390,15 @@ class _ConsultationClosurePageState extends State<ConsultationClosurePage> {
     final appt = widget.appointment;
 
     return PopScope(
-      canPop: !appt.needsClosure,
+      canPop: true,
       child: Scaffold(
       appBar: AppBar(
         title: const Text('Cerrar consulta'),
-        automaticallyImplyLeading: !appt.needsClosure,
+        leading: IconButton(
+          icon: const Icon(Icons.close_rounded),
+          tooltip: 'Ocultar',
+          onPressed: () => Navigator.maybePop(context),
+        ),
       ),
       body: Column(
         children: [

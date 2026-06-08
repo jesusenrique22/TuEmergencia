@@ -4,6 +4,7 @@ import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/app_design.dart';
 import '../../../../core/widgets/responsive_scaffold.dart';
+import '../../../../core/widgets/dialog_controllers.dart';
 import '../../../../core/widgets/safe_avatar.dart';
 import '../../../auth/domain/models/role.dart';
 import '../../data/medical_history_api_service.dart';
@@ -453,7 +454,7 @@ class _MedicalHistoryPageState extends State<MedicalHistoryPage> {
       ),
     );
     final text = controller.text.trim();
-    controller.dispose();
+    releaseDialogControllers([controller]);
     if (sent != true || text.isEmpty || !mounted) return;
 
     try {

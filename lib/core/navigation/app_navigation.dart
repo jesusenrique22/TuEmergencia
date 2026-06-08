@@ -32,6 +32,9 @@ class AppNavigation {
         return AppRoutes.radiologyMarketplace;
       case Role.driver:
         return AppRoutes.ambulanceDashboard;
+      case Role.paramedic:
+      case Role.ambulanceNurse:
+        return AppRoutes.ambulanceDashboard;
     }
   }
 

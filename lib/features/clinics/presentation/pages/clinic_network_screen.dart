@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../core/navigation/app_navigation.dart';
+import '../../../../core/navigation/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/app_design.dart';
 import '../../../../core/widgets/responsive_scaffold.dart';
@@ -19,6 +20,13 @@ class ClinicNetworkScreen extends StatelessWidget {
           icon: const Icon(Icons.arrow_back_ios_new, size: 20),
           onPressed: () => AppNavigation.safeBack(context),
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Ver mapa',
+            icon: const Icon(Icons.map_rounded),
+            onPressed: () => Navigator.pushNamed(context, AppRoutes.medicalNetworkMap),
+          ),
+        ],
       ),
       body: AppPage(
         child: Column(

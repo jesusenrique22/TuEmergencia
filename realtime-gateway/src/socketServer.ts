@@ -47,6 +47,28 @@ export function initSocketServer(
         .catch(() => undefined);
     }
 
+    if (role === 'AMBULANCE_DRIVER') {
+      void backend
+        .driverRooms(userId)
+        .then(({ rooms }) => {
+          for (const room of rooms) {
+            socket.join(room);
+          }
+        })
+        .catch(() => undefined);
+    }
+
+    if (role === 'PARAMEDIC' || role === 'AMBULANCE_NURSE') {
+      void backend
+        .driverRooms(userId)
+        .then(({ rooms }) => {
+          for (const room of rooms) {
+            socket.join(room);
+          }
+        })
+        .catch(() => undefined);
+    }
+
     socket.on('conversation:join', async (conversationId: string) => {
       try {
         const result = await backend.conversationJoin(userId, conversationId);
@@ -95,21 +117,36 @@ export function initSocketServer(
 
     socket.on(
       'call:invite',
-      async (payload: {
-        conversationId: string;
-        callType: 'video' | 'audio';
-        callerName?: string;
-      }) => {
+      async (
+        payload: {
+          conversationId: string;
+          callType: 'video' | 'audio';
+          callerName?: string;
+        },
+        ack?: (response: { ok: boolean; calleeId?: string; error?: string }) => void,
+      ) => {
         try {
           const callRoom = `call:${payload.conversationId}`;
           socket.join(callRoom);
           const result = await backend.callInvite(userId, payload);
           applyBroadcasts(io, result.broadcasts);
+          const calleeRoom = result.broadcasts.find((b) => b.room.startsWith('user:'));
+          const calleeId = calleeRoom?.room.replace(/^user:/, '');
+          const ok = result.broadcasts.length > 0;
           if (process.env.NODE_ENV !== 'production') {
-            console.log(`[call] invite ${userId} conv=${payload.conversationId}`);
+            console.log(
+              `[call] invite caller=${userId} callee=${calleeId ?? 'none'} conv=${payload.conversationId} delivered=${ok}`,
+            );
           }
-        } catch {
-          // ignore
+          ack?.({
+            ok,
+            calleeId,
+            error: ok
+              ? undefined
+              : 'No se pudo avisar al destinatario (conversación o cita no válida)',
+          });
+        } catch (e) {
+          ack?.({ ok: false, error: (e as Error).message });
         }
       },
     );
@@ -210,6 +247,67 @@ export function initSocketServer(
         // ignore
       }
     });
+
+    socket.on('emergency:join', async (emergencyRequestId: string) => {
+      try {
+        const result = await backend.emergencyJoin(userId, emergencyRequestId);
+        if (result.ok) {
+          socket.join(`emergency:${emergencyRequestId}`);
+        }
+      } catch {
+        // ignore
+      }
+    });
+
+    socket.on('emergency:leave', (emergencyRequestId: string) => {
+      socket.leave(`emergency:${emergencyRequestId}`);
+    });
+
+    socket.on(
+      'emergency:message:send',
+      async (
+        payload: { emergencyRequestId: string; text: string },
+        ack?: (response: { ok: boolean; error?: string; message?: unknown }) => void,
+      ) => {
+        try {
+          const result = await backend.emergencyMessageSend(userId, payload);
+          applyBroadcasts(io, result.broadcasts);
+          const ackBody = result.ack ?? { ok: true };
+          ack?.(ackBody as { ok: boolean; error?: string; message?: unknown });
+        } catch (e) {
+          ack?.({ ok: false, error: (e as Error).message });
+        }
+      },
+    );
+
+    socket.on(
+      'emergency:call:invite',
+      async (
+        payload: {
+          emergencyRequestId: string;
+          callType: 'video' | 'audio';
+          callerName?: string;
+        },
+        ack?: (response: { ok: boolean; calleeId?: string; error?: string }) => void,
+      ) => {
+        try {
+          const callRoom = `call:${payload.emergencyRequestId}`;
+          socket.join(callRoom);
+          const result = await backend.emergencyCallInvite(userId, payload);
+          applyBroadcasts(io, result.broadcasts);
+          const calleeRoom = result.broadcasts.find((b) => b.room.startsWith('user:'));
+          const calleeId = calleeRoom?.room.replace(/^user:/, '');
+          const ok = result.broadcasts.length > 0;
+          ack?.({
+            ok,
+            calleeId,
+            error: ok ? undefined : 'No se pudo avisar al destinatario',
+          });
+        } catch (e) {
+          ack?.({ ok: false, error: (e as Error).message });
+        }
+      },
+    );
   });
 
   return io;

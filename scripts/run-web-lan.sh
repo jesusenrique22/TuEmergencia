@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-PORT="${FLUTTER_WEB_PORT:-8080}"
+PORT="${FLUTTER_WEB_PORT:-8088}"
 if [[ -f .env ]]; then
   # shellcheck disable=SC1091
   source <(grep -E '^FLUTTER_WEB_PORT=' .env 2>/dev/null | sed 's/^/export /') || true

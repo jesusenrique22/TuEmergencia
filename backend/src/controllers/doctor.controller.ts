@@ -13,6 +13,7 @@ import {
   acceptClinicInvitation as acceptClinicInvitationService,
   rejectClinicInvitation as rejectClinicInvitationService,
 } from '../services/clinicInvitation.service';
+import { dismissConsultationClosureReminder } from '../services/notification.service';
 import {
   addSpecialtyToDoctorProfile,
   createSpecialtyAndAddToDoctorProfile,
@@ -225,6 +226,7 @@ export const updateAppointmentStatus = async (req: AuthRequest, res: Response) =
     if (report && typeof report === 'object') {
       try {
         await completeAppointmentWithReport(appointment, req.user!.id, report);
+        await dismissConsultationClosureReminder(req.user!.id, appointment.id);
         await prisma.notification.create({
           data: {
             userId: appointment.patientId,

@@ -4,11 +4,10 @@
  *
  * Uso: pnpm run db:migrate-mongo
  */
-import dotenv from 'dotenv';
+import '../loadEnv';
+
 import mongoose from 'mongoose';
 import { prisma } from '../lib/prisma';
-
-dotenv.config();
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/smartmedic';
 

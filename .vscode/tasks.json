@@ -1,0 +1,85 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "smart-medic: ensure Flutter paths",
+      "type": "shell",
+      "command": "./scripts/ensure-local-paths.sh",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "smart-medic: prep debug",
+      "dependsOn": [
+        "smart-medic: free dev ports",
+        "smart-medic: ensure Flutter paths"
+      ],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
+    },
+    {
+      "label": "smart-medic: free dev ports",
+      "type": "shell",
+      "command": "./scripts/stop-dev-ports.sh",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "smart-medic: backend API",
+      "type": "shell",
+      "command": "pnpm run dev",
+      "options": {
+        "cwd": "${workspaceFolder}/backend"
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "pattern": { "regexp": "^$" },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "ts-node-dev|→ Arrancando web|→ Web",
+          "endsPattern": "Smart Medic API en puerto 3000"
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "backend"
+      }
+    },
+    {
+      "label": "smart-medic: realtime gateway",
+      "type": "shell",
+      "command": "pnpm run dev",
+      "options": {
+        "cwd": "${workspaceFolder}/realtime-gateway"
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "pattern": { "regexp": "^$" },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "ts-node-dev",
+          "endsPattern": "Realtime Gateway \\(WebSocket\\)"
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "gateway"
+      }
+    },
+    {
+      "label": "smart-medic: dev stack",
+      "dependsOn": [
+        "smart-medic: backend API",
+        "smart-medic: realtime gateway"
+      ],
+      "dependsOrder": "parallel",
+      "problemMatcher": []
+    }
+  ]
+}

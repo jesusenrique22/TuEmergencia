@@ -13,8 +13,33 @@ export enum UserRole {
   PHARMACY_CASHIER = 'PHARMACY_CASHIER',
   /** Técnico de laboratorio clínico */
   LAB_TECH = 'LAB_TECH',
+  /** Conductor de ambulancia */
+  AMBULANCE_DRIVER = 'AMBULANCE_DRIVER',
+  /** Paramédico embarcado en ambulancia */
+  PARAMEDIC = 'PARAMEDIC',
+  /** Enfermero/a embarcado en ambulancia */
+  AMBULANCE_NURSE = 'AMBULANCE_NURSE',
   /** @deprecated Usar SUPER_ADMIN */
   ADMIN = 'ADMIN',
+}
+
+export enum AmbulanceUnitStatus {
+  AVAILABLE = 'AVAILABLE',
+  DISPATCHED = 'DISPATCHED',
+  ON_SCENE = 'ON_SCENE',
+  TRANSPORTING = 'TRANSPORTING',
+  MAINTENANCE = 'MAINTENANCE',
+}
+
+export enum EmergencyRequestStatus {
+  REQUESTED = 'REQUESTED',
+  DISPATCHED = 'DISPATCHED',
+  ON_SCENE = 'ON_SCENE',
+  PATIENT_ONBOARD = 'PATIENT_ONBOARD',
+  EN_ROUTE = 'EN_ROUTE',
+  ARRIVED = 'ARRIVED',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED',
 }
 
 export enum AppointmentStatus {

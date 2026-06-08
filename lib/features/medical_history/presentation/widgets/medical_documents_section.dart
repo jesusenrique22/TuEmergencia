@@ -1,8 +1,8 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
-import '../../../../core/config/api_config.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/network/api_url.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../data/medical_document_api_service.dart';
 import '../../domain/models/patient_medical_document.dart';
@@ -66,9 +66,7 @@ class _MedicalDocumentsSectionState extends State<MedicalDocumentsSection> {
   }
 
   String _fullUrl(String path) {
-    if (path.startsWith('http')) return path;
-    final base = ApiConfig.baseUrl.replaceAll(RegExp(r'/+$'), '');
-    return '$base$path';
+    return ApiUrl.resolve(path);
   }
 
   Future<void> _upload() async {

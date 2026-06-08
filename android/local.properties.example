@@ -1,0 +1,3 @@
+# Copia a android/local.properties (generado también por ./scripts/ensure-local-paths.sh)
+sdk.dir=/Users/smart/Library/Android/sdk
+flutter.sdk=/Users/smart/flutter

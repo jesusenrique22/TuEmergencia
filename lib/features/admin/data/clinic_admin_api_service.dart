@@ -181,8 +181,12 @@ class ClinicAdminApiService {
         'Invitación enviada. El médico debe aceptarla.';
   }
 
-  Future<void> unassignDoctor(String doctorUserId) async {
-    await _client.delete('/api/clinic-admin/doctors/$doctorUserId');
+  Future<void> unassignDoctor(
+    String doctorUserId, {
+    bool deleteAccount = false,
+  }) async {
+    final q = deleteAccount ? '?deleteAccount=true' : '';
+    await _client.delete('/api/clinic-admin/doctors/$doctorUserId$q');
   }
 
   Future<CreateDoctorResult> createDoctor({
@@ -216,6 +220,215 @@ class ClinicAdminApiService {
         'currentPassword': currentPassword,
         'newPassword': newPassword,
       },
+      auth: true,
+    );
+  }
+
+  Future<List<AmbulanceStaffItem>> listAmbulanceStaff({String? role}) async {
+    final query = role != null && role.isNotEmpty ? '?role=$role' : '';
+    final data = await _client.get('/api/clinic-admin/ambulance-staff$query');
+    return (data as List)
+        .map((e) => AmbulanceStaffItem.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+  }
+
+  Future<CreateDoctorResult> createAmbulanceStaff({
+    required String role,
+    required String name,
+    required String email,
+    String? phone,
+  }) async {
+    final data = await _client.post(
+      '/api/clinic-admin/ambulance-staff',
+      {
+        'role': role,
+        'name': name.trim(),
+        'email': email.trim(),
+        if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
+      },
+      auth: true,
+    );
+    return CreateDoctorResult.fromJson(data);
+  }
+
+  Future<List<AmbulanceDriverItem>> listAmbulanceDrivers() async {
+    final data = await _client.get('/api/clinic-admin/ambulance-drivers');
+    return (data as List)
+        .map((e) => AmbulanceDriverItem.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+  }
+
+  Future<CreateDoctorResult> createAmbulanceDriver({
+    required String name,
+    required String email,
+    String? phone,
+  }) async {
+    final data = await _client.post(
+      '/api/clinic-admin/ambulance-drivers',
+      {
+        'name': name.trim(),
+        'email': email.trim(),
+        if (phone != null && phone.trim().isNotEmpty) 'phone': phone.trim(),
+      },
+      auth: true,
+    );
+    return CreateDoctorResult.fromJson(data);
+  }
+
+  Future<List<AmbulanceUnitItem>> listAmbulances() async {
+    final data = await _client.get('/api/clinic-admin/ambulances');
+    return (data as List)
+        .map((e) => AmbulanceUnitItem.fromJson(Map<String, dynamic>.from(e)))
+        .toList();
+  }
+
+  Future<AmbulanceUnitItem> createAmbulance({
+    required String plateNumber,
+    String? callSign,
+    String? driverId,
+    String? paramedicId,
+    String? nurseId,
+  }) async {
+    final data = await _client.post(
+      '/api/clinic-admin/ambulances',
+      {
+        'plateNumber': plateNumber.trim(),
+        if (callSign != null && callSign.trim().isNotEmpty) 'callSign': callSign.trim(),
+        if (driverId != null && driverId.isNotEmpty) 'driverId': driverId,
+        if (paramedicId != null && paramedicId.isNotEmpty) 'paramedicId': paramedicId,
+        if (nurseId != null && nurseId.isNotEmpty) 'nurseId': nurseId,
+      },
+      auth: true,
+    );
+    return AmbulanceUnitItem.fromJson(Map<String, dynamic>.from(data));
+  }
+
+  Future<AmbulanceUnitItem> updateAmbulance(
+    String unitId, {
+    String? callSign,
+    String? driverId,
+    String? paramedicId,
+    String? nurseId,
+    String? status,
+  }) async {
+    final data = await _client.patch(
+      '/api/clinic-admin/ambulances/$unitId',
+      {
+        if (callSign != null) 'callSign': callSign.trim(),
+        if (driverId != null) 'driverId': driverId.isEmpty ? null : driverId,
+        if (paramedicId != null) 'paramedicId': paramedicId.isEmpty ? null : paramedicId,
+        if (nurseId != null) 'nurseId': nurseId.isEmpty ? null : nurseId,
+        'status': ?status,
+      },
+      auth: true,
+    );
+    return AmbulanceUnitItem.fromJson(Map<String, dynamic>.from(data));
+  }
+}
+
+class AmbulanceStaffItem {
+  final String id;
+  final String name;
+  final String email;
+  final String? phone;
+  final String role;
+
+  AmbulanceStaffItem({
+    required this.id,
+    required this.name,
+    required this.email,
+    this.phone,
+    required this.role,
+  });
+
+  factory AmbulanceStaffItem.fromJson(Map<String, dynamic> json) {
+    return AmbulanceStaffItem(
+      id: (json['_id'] ?? json['id']).toString(),
+      name: json['name'] as String? ?? '',
+      email: json['email'] as String? ?? '',
+      phone: json['phone'] as String?,
+      role: json['role'] as String? ?? 'AMBULANCE_DRIVER',
+    );
+  }
+
+  String get roleLabel {
+    switch (role) {
+      case 'PARAMEDIC':
+        return 'Paramédico';
+      case 'AMBULANCE_NURSE':
+        return 'Enfermero/a';
+      default:
+        return 'Conductor';
+    }
+  }
+}
+
+class AmbulanceDriverItem {
+  final String id;
+  final String name;
+  final String email;
+  final String? phone;
+
+  AmbulanceDriverItem({
+    required this.id,
+    required this.name,
+    required this.email,
+    this.phone,
+  });
+
+  factory AmbulanceDriverItem.fromJson(Map<String, dynamic> json) {
+    return AmbulanceDriverItem(
+      id: (json['_id'] ?? json['id']).toString(),
+      name: json['name'] as String? ?? '',
+      email: json['email'] as String? ?? '',
+      phone: json['phone'] as String?,
     );
   }
 }
+
+class AmbulanceUnitItem {
+  final String id;
+  final String plateNumber;
+  final String? callSign;
+  final String status;
+  final String? driverId;
+  final String? driverName;
+  final String? paramedicId;
+  final String? paramedicName;
+  final String? nurseId;
+  final String? nurseName;
+
+  AmbulanceUnitItem({
+    required this.id,
+    required this.plateNumber,
+    this.callSign,
+    required this.status,
+    this.driverId,
+    this.driverName,
+    this.paramedicId,
+    this.paramedicName,
+    this.nurseId,
+    this.nurseName,
+  });
+
+  factory AmbulanceUnitItem.fromJson(Map<String, dynamic> json) {
+    final driver = json['driver'] as Map<String, dynamic>?;
+    final paramedic = json['paramedic'] as Map<String, dynamic>?;
+    final nurse = json['nurse'] as Map<String, dynamic>?;
+    return AmbulanceUnitItem(
+      id: (json['_id'] ?? json['id']).toString(),
+      plateNumber: json['plateNumber'] as String? ?? '',
+      callSign: json['callSign'] as String?,
+      status: json['status'] as String? ?? 'AVAILABLE',
+      driverId: driver?['id']?.toString() ?? json['driverId']?.toString(),
+      driverName: driver?['name'] as String?,
+      paramedicId: paramedic?['id']?.toString() ?? json['paramedicId']?.toString(),
+      paramedicName: paramedic?['name'] as String?,
+      nurseId: nurse?['id']?.toString() ?? json['nurseId']?.toString(),
+      nurseName: nurse?['name'] as String?,
+    );
+  }
+
+  String get displayName => callSign ?? plateNumber;
+}
+

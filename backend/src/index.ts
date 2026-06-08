@@ -1,6 +1,7 @@
+import './loadEnv';
+
 import express from 'express';
 import path from 'path';
-import dotenv from 'dotenv';
 
 import { connectDatabase } from './config/db';
 import { createCorsMiddleware } from './config/cors';
@@ -17,8 +18,8 @@ import clinicAdminRoutes from './routes/clinicAdmin.routes';
 import pharmacyAdminRoutes from './routes/pharmacyAdmin.routes';
 import pharmacyStaffRoutes from './routes/pharmacyStaff.routes';
 import notificationRoutes from './routes/notification.routes';
-
-dotenv.config();
+import emergencyRoutes from './routes/emergency.routes';
+import ambulanceCrewRoutes from './routes/ambulanceCrew.routes';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -60,6 +61,8 @@ app.use('/api/clinic-admin', clinicAdminRoutes);
 app.use('/api/pharmacy-admin', pharmacyAdminRoutes);
 app.use('/api/pharmacy-staff', pharmacyStaffRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/emergencies', emergencyRoutes);
+app.use('/api/ambulance-crew', ambulanceCrewRoutes);
 app.use('/internal/realtime', internalRealtimeRoutes);
 
 async function start() {

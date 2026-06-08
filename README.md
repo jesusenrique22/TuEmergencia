@@ -8,16 +8,26 @@ App Flutter + backend REST (`backend/`) + gateway WebSocket (`realtime-gateway/`
 |----------|--------|---------|
 | API | 3000 | `cd backend && pnpm run dev` |
 | Gateway | 3001 | `cd realtime-gateway && pnpm run dev` |
-| Flutter web (LAN) | **8080** | `./scripts/run-web-lan.sh` |
+| Flutter web | **8088** | Con `cd backend && pnpm run dev` (túnel) · `flutter run` (LAN) |
+
+**Cursor Puertos:** solo **8088** → **Público**. Backend y gateway en 3000/3001 locales.
 
 Copia `.env.example` → `.env` en la raíz del proyecto.
 
 ## Web desde otro dispositivo (videollamadas, etc.)
 
-1. Pon en `.env`: `DEV_HOST=<IP Wi‑Fi de tu Mac>` y `FLUTTER_WEB_PORT=8080`
-2. Arranca backend, gateway y `./scripts/run-web-lan.sh`
-3. En el móvil (misma Wi‑Fi): `http://<DEV_HOST>:8080`
+1. Pon en `.env`: `DEV_HOST=<IP Wi‑Fi de tu Mac>` y `FLUTTER_WEB_PORT=8088`
+2. Arranca: `cd backend && pnpm run dev` y `cd realtime-gateway && pnpm run dev` (la web :8088 sube sola)
+3. En el móvil (misma Wi‑Fi): `http://<DEV_HOST>:8088`
 
-Guía completa: [docs/DEV_LAN.md](docs/DEV_LAN.md) · Dev Tunnels (502): [docs/DEV_TUNNELS.md](docs/DEV_TUNNELS.md)
+Guías: [DEV_LAN](docs/DEV_LAN.md) · [Dev Tunnels](docs/DEV_TUNNELS.md) · [Comunicación](docs/COMMUNICATION.md) · [ENV](docs/ENV.md)
 
-Comprobar puertos: `./scripts/check-dev-ports.sh`
+```bash
+cd backend && pnpm run dev           # API + web :8088 + túnel (.env)
+cd realtime-gateway && pnpm run dev  # Socket.IO
+flutter run                          # simulador
+./scripts/verify-dev-env.sh
+./scripts/check-dev-ports.sh
+```
+
+Guía: [docs/DEV_TERMINALS.md](docs/DEV_TERMINALS.md) · Dev Tunnel: `TUNNEL_PREFIX` en `.env`

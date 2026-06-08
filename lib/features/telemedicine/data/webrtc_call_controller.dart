@@ -669,13 +669,13 @@ class WebRtcCallController {
       if (c is Map) {
         await _queueOrAddCandidate(Map<String, dynamic>.from(c));
       }
-    });
+    }, conversationId: conversationId);
     socket.onCallEnded((_) {
       if (!_statusController.isClosed) _statusController.add('ended');
-    });
+    }, conversationId: conversationId);
     socket.onCallRejected((_) {
       if (!_statusController.isClosed) _statusController.add('rejected');
-    });
+    }, conversationId: conversationId);
   }
 
   void _registerOfferHandler({required bool wantsVideo}) {
@@ -689,7 +689,7 @@ class WebRtcCallController {
         return;
       }
       await _handleRemoteOffer(data, fallbackVideo: wantsVideo);
-    });
+    }, conversationId: conversationId);
   }
 
   Future<void> _flushQueuedOffer({required bool wantsVideo}) async {
@@ -724,7 +724,7 @@ class WebRtcCallController {
         return;
       }
       await _onOutgoingPeerAccepted(wantsVideo);
-    });
+    }, conversationId: conversationId);
 
     socket.onCallAnswer((data) async {
       if (data['conversationId']?.toString() != conversationId) return;
@@ -732,7 +732,7 @@ class WebRtcCallController {
       final sdp = data['sdp'];
       if (sdp is! Map) return;
       await _applyRemoteAnswer(Map<String, dynamic>.from(sdp));
-    });
+    }, conversationId: conversationId);
 
     await _createPeer();
     await _attachLocalMedia(video: wantsVideo);
@@ -746,9 +746,12 @@ class WebRtcCallController {
   }
 
   /// Debe llamarse solo después de [startOutgoingCall] (peer listo + listeners activos).
-  void sendOutgoingInvite({required String callerName, required String callType}) {
+  Future<bool> sendOutgoingInvite({
+    required String callerName,
+    required String callType,
+  }) async {
     developer.log('call:invite conv=$conversationId', name: _logName);
-    socket.inviteCall(
+    return socket.inviteCall(
       conversationId: conversationId,
       callType: callType,
       callerName: callerName,
@@ -829,6 +832,11 @@ class WebRtcCallController {
       await _peer!.setLocalDescription(answer);
       socket.sendAnswer(conversationId: conversationId, sdp: answer.toMap());
       developer.log('answer enviada', name: _logName);
+      CallDebugLog.media(
+        'Answer enviada',
+        level: RealtimeDebugLevel.success,
+        detail: 'conv=$conversationId',
+      );
       await _syncRemoteTracksFromReceivers();
     } catch (e, st) {
       developer.log('handleRemoteOffer', name: _logName, error: e, stackTrace: st);

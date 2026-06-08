@@ -42,7 +42,18 @@ class ChatSocketService {
   bool get authRejected => _authRejected;
   bool get isConnecting => _connecting;
   Timer? _connectDebounce;
+  Timer? _connectWatchdog;
   int _connectGeneration = 0;
+
+  static const _maxBufferedSignals = 24;
+  final Map<String, List<Map<String, dynamic>>> _signalingBuffer = {};
+  void Function(Map<String, dynamic>)? _callAcceptedHandler;
+  void Function(Map<String, dynamic>)? _callOfferHandler;
+  void Function(Map<String, dynamic>)? _callAnswerHandler;
+  void Function(Map<String, dynamic>)? _callIceHandler;
+  void Function(Map<String, dynamic>)? _callEndedHandler;
+  void Function(Map<String, dynamic>)? _callRejectedHandler;
+
   final _messageController = StreamController<Map<String, dynamic>>.broadcast();
   final _conversationController =
       StreamController<Map<String, dynamic>>.broadcast();
@@ -50,6 +61,10 @@ class ChatSocketService {
   final _notificationController =
       StreamController<Map<String, dynamic>>.broadcast();
   final _clinicRosterController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  final _emergencyUpdatedController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  final _emergencyLocationController =
       StreamController<Map<String, dynamic>>.broadcast();
   final _connectionController = StreamController<bool>.broadcast();
 
@@ -62,22 +77,30 @@ class ChatSocketService {
       _notificationController.stream;
   Stream<Map<String, dynamic>> get onClinicRosterUpdated =>
       _clinicRosterController.stream;
+  Stream<Map<String, dynamic>> get onEmergencyUpdated =>
+      _emergencyUpdatedController.stream;
+  Stream<Map<String, dynamic>> get onEmergencyLocation =>
+      _emergencyLocationController.stream;
 
   bool get isConnected => _socket?.connected ?? false;
 
   /// Espera a que el socket esté listo (p. ej. antes de una llamada).
   Future<bool> ensureConnected({
-    Duration timeout = const Duration(seconds: 12),
+    Duration timeout = const Duration(seconds: 6),
   }) async {
     if (!AppSession.isLoggedIn || AppSession.token == null) return false;
     if (isConnected) return true;
 
-    final gatewayUp = await isGatewayReachable();
-    if (!gatewayUp) {
-      debugPrint(
-        '[ChatSocket] Gateway no responde en ${ApiConfig.socketUrl}/health',
+    if (!ApiConfig.openedViaDevTunnel) {
+      final gatewayUp = await isGatewayReachable(
+        timeout: const Duration(seconds: 3),
       );
-      return false;
+      if (!gatewayUp) {
+        debugPrint(
+          '[ChatSocket] Gateway no responde en ${ApiConfig.gatewayHealthUrl}',
+        );
+        return false;
+      }
     }
 
     connect();
@@ -118,6 +141,17 @@ class ChatSocketService {
     return const ['polling', 'websocket'];
   }
 
+  void resetStalledConnection() {
+    if (isConnected) return;
+    _connectWatchdog?.cancel();
+    _connectWatchdog = null;
+    if (_connecting || _socket != null) {
+      debugPrint('[ChatSocket] Conexión colgada — reiniciando socket');
+      _connecting = false;
+      _tearDownSocket();
+    }
+  }
+
   void connect() {
     if (!AppSession.isLoggedIn || AppSession.token == null) return;
     if (_authRejected) return;
@@ -136,25 +170,29 @@ class ChatSocketService {
     if (_connecting) return;
 
     final url = ApiConfig.socketUrl;
-    final gatewayUp = await isGatewayReachable();
-    if (!gatewayUp) {
-      lastConnectionError = 'Gateway /health no responde en $url';
-      _debug.log(
-        'ChatSocket',
-        lastConnectionError!,
-        level: RealtimeDebugLevel.error,
+    if (!ApiConfig.openedViaDevTunnel) {
+      final gatewayUp = await isGatewayReachable(
+        timeout: const Duration(seconds: 3),
       );
-      final now = DateTime.now();
-      if (_lastGatewayUnreachableLog == null ||
-          now.difference(_lastGatewayUnreachableLog!) >
-              const Duration(seconds: 15)) {
-        _lastGatewayUnreachableLog = now;
-        debugPrint(
-          '[ChatSocket] Sin gateway en $url/health — '
-          'ejecuta: cd realtime-gateway && pnpm run dev',
+      if (!gatewayUp) {
+        lastConnectionError = 'Gateway no responde en ${ApiConfig.gatewayHealthUrl}';
+        _debug.log(
+          'ChatSocket',
+          lastConnectionError!,
+          level: RealtimeDebugLevel.error,
         );
+        final now = DateTime.now();
+        if (_lastGatewayUnreachableLog == null ||
+            now.difference(_lastGatewayUnreachableLog!) >
+                const Duration(seconds: 15)) {
+          _lastGatewayUnreachableLog = now;
+          debugPrint(
+            '[ChatSocket] Sin gateway en ${ApiConfig.gatewayHealthUrl} — '
+            'cd realtime-gateway && pnpm run dev',
+          );
+        }
+        return;
       }
-      return;
     }
 
     _tearDownSocket();
@@ -174,14 +212,27 @@ class ChatSocketService {
           .enableReconnection()
           .setReconnectionDelay(2000)
           .setReconnectionDelayMax(10000)
-          .setTimeout(20000)
+          .setTimeout(10000)
           .setAuth({'token': token})
           .build(),
     );
 
+    _connectWatchdog?.cancel();
+    _connectWatchdog = Timer(const Duration(seconds: 12), () {
+      if (generation != _connectGeneration) return;
+      if (_connecting && !(_socket?.connected ?? false)) {
+        debugPrint('[ChatSocket] Timeout de conexión — reintentando');
+        _connecting = false;
+        _tearDownSocket();
+        connect();
+      }
+    });
+
     _socket!
       ..onConnect((_) {
         if (generation != _connectGeneration) return;
+        _connectWatchdog?.cancel();
+        _connectWatchdog = null;
         _connecting = false;
         lastConnectionError = null;
         developer.log('socket conectado', name: 'ChatSocket');
@@ -198,6 +249,8 @@ class ChatSocketService {
       })
       ..onConnectError((err) {
         if (generation != _connectGeneration) return;
+        _connectWatchdog?.cancel();
+        _connectWatchdog = null;
         _connecting = false;
         lastConnectionError = err.toString();
         developer.log('connect_error', name: 'ChatSocket', error: err);
@@ -258,9 +311,175 @@ class ChatSocketService {
         if (data is Map) {
           _clinicRosterController.add(Map<String, dynamic>.from(data));
         }
+      })
+      ..on('emergency:updated', (data) {
+        if (data is Map) {
+          _emergencyUpdatedController.add(Map<String, dynamic>.from(data));
+        }
+      })
+      ..on('emergency:location', (data) {
+        if (data is Map) {
+          _emergencyLocationController.add(Map<String, dynamic>.from(data));
+        }
+      })
+      ..on('emergency:assigned', (data) {
+        if (data is Map) {
+          _emergencyUpdatedController.add(Map<String, dynamic>.from(data));
+        }
       });
 
+    _attachCallSignalingListeners();
+
     _socket!.connect();
+  }
+
+  void _attachCallSignalingListeners() {
+    final s = _socket;
+    if (s == null) return;
+
+    s
+      ..off('call:accepted')
+      ..off('call:offer')
+      ..off('call:answer')
+      ..off('call:ice')
+      ..off('call:ended')
+      ..off('call:rejected')
+      ..on('call:accepted', (data) {
+        _dispatchCallSignal(
+          'call:accepted',
+          data,
+          _callAcceptedHandler,
+          level: RealtimeDebugLevel.success,
+        );
+      })
+      ..on('call:offer', (data) {
+        _dispatchCallSignal('call:offer', data, _callOfferHandler);
+      })
+      ..on('call:answer', (data) {
+        _dispatchCallSignal(
+          'call:answer',
+          data,
+          _callAnswerHandler,
+          level: RealtimeDebugLevel.success,
+        );
+      })
+      ..on('call:ice', (data) {
+        if (data is! Map) return;
+        final map = Map<String, dynamic>.from(data);
+        final c = map['candidate'];
+        if (c is Map) {
+          CallDebugLog.iceReceived(sdpMid: c['sdpMid']?.toString());
+        }
+        if (_callIceHandler != null) {
+          _callIceHandler!(map);
+        } else {
+          _bufferCallSignal('call:ice', map);
+        }
+      })
+      ..on('call:ended', (data) {
+        _dispatchCallSignal(
+          'call:ended',
+          data,
+          _callEndedHandler,
+          level: RealtimeDebugLevel.warn,
+        );
+      })
+      ..on('call:rejected', (data) {
+        _dispatchCallSignal(
+          'call:rejected',
+          data,
+          _callRejectedHandler,
+          level: RealtimeDebugLevel.warn,
+        );
+      });
+  }
+
+  void _dispatchCallSignal(
+    String kind,
+    dynamic data,
+    void Function(Map<String, dynamic>)? handler, {
+    RealtimeDebugLevel level = RealtimeDebugLevel.info,
+  }) {
+    if (data is! Map) return;
+    final map = Map<String, dynamic>.from(data);
+    final conv = map['conversationId']?.toString() ?? '?';
+    if (kind == 'call:offer') {
+      CallDebugLog.signal(
+        'call:offer ←',
+        detail: 'conv=$conv tipo=${map['callType'] ?? "?"}',
+      );
+    } else if (kind == 'call:answer') {
+      CallDebugLog.signal(
+        'call:answer ←',
+        level: RealtimeDebugLevel.success,
+        detail: 'conv=$conv',
+      );
+    } else if (kind == 'call:accepted') {
+      CallDebugLog.signal(
+        'call:accepted ←',
+        level: RealtimeDebugLevel.success,
+        detail: 'conv=$conv',
+      );
+    } else if (kind == 'call:ended') {
+      CallDebugLog.signal(
+        'call:ended ←',
+        level: RealtimeDebugLevel.warn,
+        detail: 'conv=$conv',
+      );
+    } else if (kind == 'call:rejected') {
+      CallDebugLog.signal(
+        'call:rejected ←',
+        level: RealtimeDebugLevel.warn,
+        detail: 'conv=$conv',
+      );
+    }
+    if (handler != null) {
+      handler(map);
+    } else {
+      _bufferCallSignal(kind, map);
+    }
+  }
+
+  void _bufferCallSignal(String kind, Map<String, dynamic> map) {
+    final convId = map['conversationId']?.toString();
+    if (convId == null || convId.isEmpty) return;
+    final key = '$kind:$convId';
+    final list = _signalingBuffer.putIfAbsent(key, () => []);
+    if (list.length >= _maxBufferedSignals) list.removeAt(0);
+    list.add(map);
+    CallDebugLog.signal(
+      '$kind (en cola)',
+      level: RealtimeDebugLevel.warn,
+      detail: 'conv=$convId — handler aún no registrado',
+    );
+  }
+
+  void _flushSignalingBuffer(
+    String kind,
+    String conversationId,
+    void Function(Map<String, dynamic>) handler,
+  ) {
+    final key = '$kind:$conversationId';
+    final pending = _signalingBuffer.remove(key);
+    if (pending == null || pending.isEmpty) return;
+    CallDebugLog.signal(
+      '$kind (reproduciendo ${pending.length})',
+      level: RealtimeDebugLevel.success,
+      detail: 'conv=$conversationId',
+    );
+    for (final map in pending) {
+      handler(map);
+    }
+  }
+
+  void _clearCallHandlers() {
+    _callAcceptedHandler = null;
+    _callOfferHandler = null;
+    _callAnswerHandler = null;
+    _callIceHandler = null;
+    _callEndedHandler = null;
+    _callRejectedHandler = null;
+    _signalingBuffer.clear();
   }
 
   bool _isAuthError(dynamic err) {
@@ -295,8 +514,12 @@ class ChatSocketService {
   }
 
   void disconnect() {
+    _connectDebounce?.cancel();
+    _connectWatchdog?.cancel();
+    _connectWatchdog = null;
     _connecting = false;
     _connectGeneration++;
+    _clearCallHandlers();
     _tearDownSocket();
     _connectionController.add(false);
   }
@@ -314,6 +537,14 @@ class ChatSocketService {
 
   void leaveConversation(String conversationId) {
     _socket?.emit('conversation:leave', conversationId);
+  }
+
+  void joinEmergency(String emergencyRequestId) {
+    _socket?.emit('emergency:join', emergencyRequestId);
+  }
+
+  void leaveEmergency(String emergencyRequestId) {
+    _socket?.emit('emergency:leave', emergencyRequestId);
   }
 
   Future<ChatMessageItem?> sendMessage({
@@ -343,20 +574,56 @@ class ChatSocketService {
     );
   }
 
-  void inviteCall({
+  Future<bool> inviteCall({
     required String conversationId,
     required String callType,
     required String callerName,
-  }) {
+  }) async {
     CallDebugLog.signal(
       'call:invite →',
       detail: 'conv=$conversationId tipo=$callType',
     );
-    _socket?.emit('call:invite', {
-      'conversationId': conversationId,
-      'callType': callType,
-      'callerName': callerName,
-    });
+    if (_socket == null || !isConnected) return false;
+
+    final completer = Completer<bool>();
+    _socket!.emitWithAck(
+      'call:invite',
+      {
+        'conversationId': conversationId,
+        'callType': callType,
+        'callerName': callerName,
+      },
+      ack: (data) {
+        if (data is Map && data['ok'] == true) {
+          CallDebugLog.signal(
+            'call:invite ✓',
+            level: RealtimeDebugLevel.success,
+            detail: 'callee=${data['calleeId'] ?? "?"}',
+          );
+          completer.complete(true);
+          return;
+        }
+        final err = data is Map ? data['error']?.toString() : null;
+        CallDebugLog.signal(
+          'call:invite ✗',
+          level: RealtimeDebugLevel.error,
+          detail: err ?? 'sin respuesta del gateway',
+        );
+        completer.complete(false);
+      },
+    );
+
+    return completer.future.timeout(
+      const Duration(seconds: 8),
+      onTimeout: () {
+        CallDebugLog.signal(
+          'call:invite timeout',
+          level: RealtimeDebugLevel.error,
+          detail: 'conv=$conversationId',
+        );
+        return false;
+      },
+    );
   }
 
   void acceptCall(String conversationId) {
@@ -431,94 +698,55 @@ class ChatSocketService {
     _socket?.emit('call:end', {'conversationId': conversationId});
   }
 
-  void onCallAccepted(void Function(Map<String, dynamic>) handler) {
-    _socket?.on('call:accepted', (data) {
-      if (data is Map) {
-        final map = Map<String, dynamic>.from(data);
-        CallDebugLog.signal(
-          'call:accepted ←',
-          level: RealtimeDebugLevel.success,
-          detail: 'conv=${map['conversationId']}',
-        );
-        handler(map);
-      }
-    });
+  void onCallAccepted(
+    void Function(Map<String, dynamic>) handler, {
+    required String conversationId,
+  }) {
+    _callAcceptedHandler = handler;
+    _flushSignalingBuffer('call:accepted', conversationId, handler);
   }
 
-  void onCallOffer(void Function(Map<String, dynamic>) handler) {
-    _socket?.on('call:offer', (data) {
-      if (data is Map) {
-        final map = Map<String, dynamic>.from(data);
-        CallDebugLog.signal(
-          'call:offer ←',
-          detail: 'conv=${map['conversationId']} tipo=${map['callType'] ?? "?"}',
-        );
-        handler(map);
-      }
-    });
+  void onCallOffer(
+    void Function(Map<String, dynamic>) handler, {
+    required String conversationId,
+  }) {
+    _callOfferHandler = handler;
+    _flushSignalingBuffer('call:offer', conversationId, handler);
   }
 
-  void onCallAnswer(void Function(Map<String, dynamic>) handler) {
-    _socket?.on('call:answer', (data) {
-      if (data is Map) {
-        final map = Map<String, dynamic>.from(data);
-        CallDebugLog.signal(
-          'call:answer ←',
-          level: RealtimeDebugLevel.success,
-          detail: 'conv=${map['conversationId']}',
-        );
-        handler(map);
-      }
-    });
+  void onCallAnswer(
+    void Function(Map<String, dynamic>) handler, {
+    required String conversationId,
+  }) {
+    _callAnswerHandler = handler;
+    _flushSignalingBuffer('call:answer', conversationId, handler);
   }
 
-  void onCallIce(void Function(Map<String, dynamic>) handler) {
-    _socket?.on('call:ice', (data) {
-      if (data is Map) {
-        final map = Map<String, dynamic>.from(data);
-        final c = map['candidate'];
-        if (c is Map) {
-          CallDebugLog.iceReceived(sdpMid: c['sdpMid']?.toString());
-        }
-        handler(map);
-      }
-    });
+  void onCallIce(
+    void Function(Map<String, dynamic>) handler, {
+    required String conversationId,
+  }) {
+    _callIceHandler = handler;
+    _flushSignalingBuffer('call:ice', conversationId, handler);
   }
 
-  void onCallEnded(void Function(Map<String, dynamic>) handler) {
-    _socket?.on('call:ended', (data) {
-      if (data is Map) {
-        final map = Map<String, dynamic>.from(data);
-        CallDebugLog.signal(
-          'call:ended ←',
-          level: RealtimeDebugLevel.warn,
-          detail: 'conv=${map['conversationId']}',
-        );
-        handler(map);
-      }
-    });
+  void onCallEnded(
+    void Function(Map<String, dynamic>) handler, {
+    required String conversationId,
+  }) {
+    _callEndedHandler = handler;
+    _flushSignalingBuffer('call:ended', conversationId, handler);
   }
 
-  void onCallRejected(void Function(Map<String, dynamic>) handler) {
-    _socket?.on('call:rejected', (data) {
-      if (data is Map) {
-        final map = Map<String, dynamic>.from(data);
-        CallDebugLog.signal(
-          'call:rejected ←',
-          level: RealtimeDebugLevel.warn,
-          detail: 'conv=${map['conversationId']}',
-        );
-        handler(map);
-      }
-    });
+  void onCallRejected(
+    void Function(Map<String, dynamic>) handler, {
+    required String conversationId,
+  }) {
+    _callRejectedHandler = handler;
+    _flushSignalingBuffer('call:rejected', conversationId, handler);
   }
 
   void offCallEvents() {
-    _socket?.off('call:accepted');
-    _socket?.off('call:offer');
-    _socket?.off('call:answer');
-    _socket?.off('call:ice');
-    _socket?.off('call:ended');
-    _socket?.off('call:rejected');
+    _clearCallHandlers();
   }
 }

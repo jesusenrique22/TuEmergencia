@@ -86,6 +86,71 @@ export class BackendRealtimeClient {
       userId,
     });
   }
+
+  driverRooms(userId: string) {
+    return this.post<{ rooms: string[] }>('/internal/realtime/driver/rooms', {
+      userId,
+    });
+  }
+
+  emergencyJoin(userId: string, emergencyRequestId: string) {
+    return this.post<{ ok: boolean; peerId?: string }>(
+      '/internal/realtime/emergency/join',
+      { userId, emergencyRequestId },
+    );
+  }
+
+  emergencyMessageSend(
+    userId: string,
+    payload: { emergencyRequestId: string; text: string },
+  ) {
+    return this.post<RealtimeHandlerResult>('/internal/realtime/emergency/message/send', {
+      userId,
+      ...payload,
+    });
+  }
+
+  emergencyCallInvite(
+    userId: string,
+    payload: {
+      emergencyRequestId: string;
+      callType: 'video' | 'audio';
+      callerName?: string;
+    },
+  ) {
+    return this.post<RealtimeHandlerResult>('/internal/realtime/emergency/call/invite', {
+      userId,
+      ...payload,
+    });
+  }
+
+  emergencyCallAccept(userId: string, emergencyRequestId: string) {
+    return this.post<RealtimeHandlerResult>('/internal/realtime/emergency/call/accept', {
+      userId,
+      emergencyRequestId,
+    });
+  }
+
+  emergencyCallReject(userId: string, emergencyRequestId: string) {
+    return this.post<RealtimeHandlerResult>('/internal/realtime/emergency/call/reject', {
+      userId,
+      emergencyRequestId,
+    });
+  }
+
+  emergencyCallEnd(userId: string, emergencyRequestId: string) {
+    return this.post<RealtimeHandlerResult>('/internal/realtime/emergency/call/end', {
+      userId,
+      emergencyRequestId,
+    });
+  }
+
+  emergencyCallPeer(userId: string, emergencyRequestId: string) {
+    return this.post<{ peerId: string | null }>('/internal/realtime/emergency/call/peer', {
+      userId,
+      emergencyRequestId,
+    });
+  }
 }
 
 export function applyBroadcasts(

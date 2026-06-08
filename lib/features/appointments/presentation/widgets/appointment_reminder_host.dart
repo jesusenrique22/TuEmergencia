@@ -6,13 +6,11 @@ import 'package:flutter/services.dart';
 import '../../../../core/auth/app_session.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/navigation/app_routes.dart';
-import '../../../../core/services/consultation_closure_coordinator.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/utils/appointment_datetime.dart';
-import '../../../auth/domain/models/role.dart';
 import '../../domain/models/appointment.dart';
 
-enum _ReminderPhase { approaching, started, ended }
+enum _ReminderPhase { approaching, started }
 
 class _ReminderPayload {
   final Appointment appointment;
@@ -30,7 +28,7 @@ class _ReminderPayload {
   });
 }
 
-/// Muestra un aviso flotante y sonido cuando una cita se acerca o comienza.
+/// Aviso flotante cuando una cita se acerca o comienza (informes pendientes → bandeja 🔔).
 class AppointmentReminderHost extends StatefulWidget {
   final Widget child;
   final Future<List<Appointment>> Function() loadAppointments;
@@ -108,7 +106,6 @@ class _AppointmentReminderHostState extends State<AppointmentReminderHost>
     return a.doctorName;
   }
 
-  /// Minutos antes del inicio para alertar (20, 10, 5, 1 y al momento).
   int? _approachMilestone(Duration untilStart) {
     if (untilStart <= Duration.zero) return null;
     final mins = untilStart.inMinutes;
@@ -126,7 +123,8 @@ class _AppointmentReminderHostState extends State<AppointmentReminderHost>
 
     for (final appt in appointments) {
       if (appt.status == AppointmentStatus.cancelled ||
-          appt.status == AppointmentStatus.completed) {
+          appt.status == AppointmentStatus.completed ||
+          appt.needsClosure) {
         for (final m in [20, 10, 5, 1, 0]) {
           _shownKeys.remove('${appt.id}-approach-$m');
         }
@@ -142,25 +140,6 @@ class _AppointmentReminderHostState extends State<AppointmentReminderHost>
       final sinceStart = now.difference(start);
       final other = _otherPartyName(appt);
       final when = formatAppointmentDateTime(appt.dateTime);
-
-      if (appt.needsClosure) {
-        final key = '${appt.id}-ended';
-        if (!_shownKeys.contains(key)) {
-          const priority = 5;
-          if (priority > bestPriority) {
-            bestPriority = priority;
-            best = _ReminderPayload(
-              appointment: appt,
-              phase: _ReminderPhase.ended,
-              showKey: key,
-              title: 'Cita finalizada',
-              subtitle:
-                  'Con $other · Completa receta, instrucciones y hallazgos',
-            );
-          }
-        }
-        continue;
-      }
 
       if (now.isAfter(end) && sinceStart > _startedGrace) continue;
 
@@ -224,9 +203,7 @@ class _AppointmentReminderHostState extends State<AppointmentReminderHost>
     try {
       final list = await widget.loadAppointments();
       if (!mounted) return;
-      if (AppSession.activeRole == Role.doctor) {
-        await ConsultationClosureCoordinator.openIfNeeded(list);
-      }
+
       final next = _pickReminder(list);
       if (next == null) return;
       if (_active != null) {
@@ -263,12 +240,7 @@ class _AppointmentReminderHostState extends State<AppointmentReminderHost>
   }
 
   void _openAppointments() {
-    final active = _active;
     _dismiss();
-    if (active?.phase == _ReminderPhase.ended) {
-      ConsultationClosureCoordinator.openFor(active!.appointment);
-      return;
-    }
     Navigator.pushNamed(context, AppRoutes.appointments);
   }
 
@@ -315,18 +287,13 @@ class _AppointmentReminderBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isEnded = payload.phase == _ReminderPhase.ended;
     final isStarted = payload.phase == _ReminderPhase.started;
-    final colors = isEnded
-        ? [AppColors.primary, AppColors.primaryDark]
-        : isStarted
-            ? [const Color(0xFF059669), const Color(0xFF047857)]
-            : [AppColors.warning, const Color(0xFFD97706)];
-    final icon = isEnded
-        ? Icons.assignment_rounded
-        : isStarted
-            ? Icons.play_circle_filled_rounded
-            : Icons.schedule_rounded;
+    final colors = isStarted
+        ? [const Color(0xFF059669), const Color(0xFF047857)]
+        : [AppColors.warning, const Color(0xFFD97706)];
+    final icon = isStarted
+        ? Icons.play_circle_filled_rounded
+        : Icons.schedule_rounded;
 
     return Material(
       elevation: 16,

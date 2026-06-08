@@ -20,6 +20,12 @@ class RoleMapper {
         return Role.pharmacyCashier;
       case 'LAB_TECH':
         return Role.labTech;
+      case 'AMBULANCE_DRIVER':
+        return Role.driver;
+      case 'PARAMEDIC':
+        return Role.paramedic;
+      case 'AMBULANCE_NURSE':
+        return Role.ambulanceNurse;
       default:
         return Role.patient;
     }
@@ -44,6 +50,12 @@ class RoleMapper {
         return 'PHARMACY_CASHIER';
       case Role.labTech:
         return 'LAB_TECH';
+      case Role.driver:
+        return 'AMBULANCE_DRIVER';
+      case Role.paramedic:
+        return 'PARAMEDIC';
+      case Role.ambulanceNurse:
+        return 'AMBULANCE_NURSE';
       default:
         throw ArgumentError('Rol no soportado en el API: $role');
     }
@@ -58,6 +70,9 @@ class RoleMapper {
         role == Role.pharmacyAdmin ||
         role == Role.pharmacist ||
         role == Role.pharmacyCashier ||
-        role == Role.labTech;
+        role == Role.labTech ||
+        role == Role.driver ||
+        role == Role.paramedic ||
+        role == Role.ambulanceNurse;
   }
 }

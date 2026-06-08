@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/branding/app_branding.dart';
 import '../../../../core/auth/app_session.dart';
 import '../../../../core/navigation/app_navigation.dart';
 import '../../../../core/services/app_realtime.dart';
@@ -55,9 +56,10 @@ class _LoginPageState extends State<LoginPage> {
     }
 
     setState(() => _loading = true);
+    var navigatedAway = false;
     try {
       final response = await _authApi.login(email: email, password: password);
-      _onAuthSuccess(response);
+      navigatedAway = await _onAuthSuccess(response);
     } on ApiException catch (e) {
       _showError(e.message);
     } catch (e) {
@@ -66,21 +68,23 @@ class _LoginPageState extends State<LoginPage> {
       );
       debugPrint('Login error: $e');
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && !navigatedAway) setState(() => _loading = false);
     }
   }
 
-  Future<void> _onAuthSuccess(AuthResponse response) async {
+  /// Devuelve true si se navegó fuera del login (evita setState tras dispose).
+  Future<bool> _onAuthSuccess(AuthResponse response) async {
     AppSession.setSession(user: response.user, tokenValue: response.token);
     AppRealtime.reconnectAfterAuth();
     if (response.user.role == Role.patient) {
       await PatientProfileRepository.refreshFromApi();
     }
-    if (!mounted) return;
+    if (!mounted) return false;
     Navigator.pushReplacementNamed(
       context,
       AppNavigation.homeRouteForRole(response.user.role),
     );
+    return true;
   }
 
   void _showError(String message) {
@@ -91,104 +95,35 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _showRegisterDialog() async {
-    final nameController = TextEditingController();
-    final emailController = TextEditingController();
-    final phoneController = TextEditingController();
-    final passwordController = TextEditingController();
-    final confirmController = TextEditingController();
-
-    final created = await showDialog<bool>(
+    final form = await showDialog<_RegisterPatientForm>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Crear cuenta de paciente'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(labelText: 'Nombre completo'),
-                textCapitalization: TextCapitalization.words,
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: emailController,
-                decoration: const InputDecoration(labelText: 'Correo'),
-                keyboardType: TextInputType.emailAddress,
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: phoneController,
-                decoration: const InputDecoration(labelText: 'Teléfono (opcional)'),
-                keyboardType: TextInputType.phone,
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: passwordController,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: 'Contraseña'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: confirmController,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: 'Confirmar contraseña'),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Registrarse'),
-          ),
-        ],
-      ),
+      builder: (ctx) => const _RegisterPatientDialog(),
     );
 
-    if (created != true || !mounted) {
-      nameController.dispose();
-      emailController.dispose();
-      phoneController.dispose();
-      passwordController.dispose();
-      confirmController.dispose();
-      return;
-    }
+    if (form == null || !mounted) return;
 
-    final name = nameController.text.trim();
-    final email = emailController.text.trim();
-    final password = passwordController.text;
-    final confirm = confirmController.text;
-    final phone = phoneController.text.trim();
-
-    nameController.dispose();
-    emailController.dispose();
-    phoneController.dispose();
-    passwordController.dispose();
-    confirmController.dispose();
-
-    if (name.isEmpty || email.isEmpty || password.isEmpty) {
+    if (form.name.isEmpty || form.email.isEmpty || form.password.isEmpty) {
       _showError('Completa nombre, correo y contraseña');
       return;
     }
-    if (password != confirm) {
+    if (form.password != form.confirmPassword) {
       _showError('Las contraseñas no coinciden');
       return;
     }
-    if (password.length < 6) {
+    if (form.password.length < 6) {
       _showError('La contraseña debe tener al menos 6 caracteres');
       return;
     }
 
     setState(() => _loading = true);
+    var navigatedAway = false;
     try {
       final response = await _authApi.register(
-        email: email,
-        password: password,
-        name: name,
+        email: form.email,
+        password: form.password,
+        name: form.name,
         roleApi: RoleMapper.toApi(Role.patient),
-        phone: phone.isEmpty ? null : phone,
+        phone: form.phone.isEmpty ? null : form.phone,
       );
       AppSession.setSession(user: response.user, tokenValue: response.token);
       await PatientProfileRepository.refreshFromApi();
@@ -204,13 +139,14 @@ class _LoginPageState extends State<LoginPage> {
       } else {
         Navigator.pushReplacementNamed(context, AppRoutes.dashboard);
       }
+      navigatedAway = true;
     } on ApiException catch (e) {
       _showError(e.message);
     } catch (e) {
       _showError('No se pudo conectar al servidor. Inicia el backend (pnpm run dev).');
       debugPrint('Register error: $e');
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && !navigatedAway) setState(() => _loading = false);
     }
   }
 
@@ -307,7 +243,7 @@ class _LoginPageState extends State<LoginPage> {
           ),
           SafeArea(
             child: SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(20, 12, 20, 24 + bottomInset),
+              padding: EdgeInsets.fromLTRB(12, 16, 12, 24 + bottomInset),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -323,46 +259,41 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
+  /// Logo horizontal (`web/Smart Medic.png`, ~1071×233).
+  Widget _buildBrandLogo({double widthFactor = 0.92, double maxLogoWidth = 520}) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxWidth = constraints.maxWidth.isFinite
+            ? constraints.maxWidth
+            : MediaQuery.sizeOf(context).width;
+        const aspect = 1071 / 233;
+        final width = (maxWidth * widthFactor).clamp(0.0, maxLogoWidth);
+        final height = width / aspect;
+        return Center(
+          child: SizedBox(
+            width: width,
+            height: height,
+            child: Image.asset(
+              AppBranding.loginLogo,
+              fit: BoxFit.contain,
+              alignment: Alignment.center,
+              filterQuality: FilterQuality.high,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildMobileHeader(BuildContext context) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Container(
-          width: 72,
-          height: 72,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(22),
-            gradient: const LinearGradient(
-              colors: [Color(0xFF60A5FA), Color(0xFF2563EB)],
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF3B82F6).withValues(alpha: 0.55),
-                blurRadius: 24,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          child: const Icon(
-            Icons.favorite_rounded,
-            color: Colors.white,
-            size: 38,
-          ),
-        ),
-        const SizedBox(height: 22),
-        Text(
-          'VITA OS',
-          style: Theme.of(context).textTheme.displaySmall?.copyWith(
-            color: Colors.white,
-            fontWeight: FontWeight.w900,
-            letterSpacing: -1.2,
-            height: 1,
-            fontSize: 40,
-          ),
-        ),
-        const SizedBox(height: 10),
+        _buildBrandLogo(widthFactor: 1, maxLogoWidth: 640),
+        const SizedBox(height: 20),
         Text(
           'Tu salud, citas y emergencias\nen una sola plataforma.',
+          textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
             color: Colors.white.withValues(alpha: 0.88),
             height: 1.35,
@@ -372,6 +303,7 @@ class _LoginPageState extends State<LoginPage> {
         const SizedBox(height: 20),
         Text(
           '¿Qué puedes hacer?',
+          textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.labelLarge?.copyWith(
             color: Colors.white.withValues(alpha: 0.75),
             fontWeight: FontWeight.w600,
@@ -537,73 +469,24 @@ class _LoginPageState extends State<LoginPage> {
     final theme = Theme.of(context);
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: isCompact ? 52 : 64,
-              height: isCompact ? 52 : 64,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.18),
-                borderRadius: BorderRadius.circular(isCompact ? 16 : 22),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.28)),
-              ),
-              child: Icon(
-                Icons.favorite_rounded,
-                color: Colors.white,
-                size: isCompact ? 28 : 34,
-              ),
-            ),
-            if (isCompact) ...[
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'VITA OS',
-                      style: theme.textTheme.headlineMedium?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.5,
-                        height: 1.1,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Salud conectada en un solo lugar',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: Colors.white.withValues(alpha: 0.9),
-                        height: 1.35,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ],
+        _buildBrandLogo(
+          widthFactor: isCompact ? 0.96 : 0.88,
+          maxLogoWidth: isCompact ? 520 : 640,
         ),
-        if (!isCompact) ...[
-          const SizedBox(height: 28),
-          Text(
-            'VITA OS',
-            style: theme.textTheme.displayLarge?.copyWith(
-              color: Colors.white,
-              fontSize: 44,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -1,
-            ),
+        const SizedBox(height: 14),
+        Text(
+          isCompact
+              ? 'Salud conectada en un solo lugar'
+              : 'Pacientes, médicos y administradores conectados a la base de datos.',
+          textAlign: TextAlign.center,
+          style: (isCompact ? theme.textTheme.bodyMedium : theme.textTheme.bodyLarge)
+              ?.copyWith(
+            color: Colors.white.withValues(alpha: isCompact ? 0.9 : 0.82),
+            height: 1.35,
           ),
-          const SizedBox(height: 12),
-          Text(
-            'Pacientes, médicos y administradores conectados a la base de datos.',
-            style: theme.textTheme.bodyLarge?.copyWith(
-              color: Colors.white.withValues(alpha: 0.82),
-            ),
-          ),
-        ],
+        ),
         SizedBox(height: isCompact ? 18 : 28),
         _buildFeatureGrid(isCompact: isCompact),
       ],
@@ -933,4 +816,114 @@ class _DemoEntry {
   final VoidCallback onPressed;
 
   const _DemoEntry(this.label, this.icon, this.onPressed);
+}
+
+class _RegisterPatientForm {
+  const _RegisterPatientForm({
+    required this.name,
+    required this.email,
+    required this.phone,
+    required this.password,
+    required this.confirmPassword,
+  });
+
+  final String name;
+  final String email;
+  final String phone;
+  final String password;
+  final String confirmPassword;
+}
+
+class _RegisterPatientDialog extends StatefulWidget {
+  const _RegisterPatientDialog();
+
+  @override
+  State<_RegisterPatientDialog> createState() => _RegisterPatientDialogState();
+}
+
+class _RegisterPatientDialogState extends State<_RegisterPatientDialog> {
+  final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _confirmController = TextEditingController();
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    _passwordController.dispose();
+    _confirmController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final form = _RegisterPatientForm(
+      name: _nameController.text.trim(),
+      email: _emailController.text.trim(),
+      phone: _phoneController.text.trim(),
+      password: _passwordController.text,
+      confirmPassword: _confirmController.text,
+    );
+    FocusScope.of(context).unfocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!context.mounted) return;
+      Navigator.pop(context, form);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Crear cuenta de paciente'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _nameController,
+              decoration: const InputDecoration(labelText: 'Nombre completo'),
+              textCapitalization: TextCapitalization.words,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _emailController,
+              decoration: const InputDecoration(labelText: 'Correo'),
+              keyboardType: TextInputType.emailAddress,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _phoneController,
+              decoration: const InputDecoration(labelText: 'Teléfono (opcional)'),
+              keyboardType: TextInputType.phone,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _passwordController,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'Contraseña'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _confirmController,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'Confirmar contraseña'),
+              onSubmitted: (_) => _submit(),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _submit,
+          child: const Text('Registrarse'),
+        ),
+      ],
+    );
+  }
 }

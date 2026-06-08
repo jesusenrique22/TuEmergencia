@@ -4,6 +4,7 @@ enum NotificationCategory {
   appointmentReminder,
   chatMessage,
   clinicInvitation,
+  consultationClosure,
   system,
   unknown,
 }
@@ -39,6 +40,11 @@ class AppNotification {
       relatedId != null &&
       relatedId!.isNotEmpty;
 
+  bool get isPendingConsultationClosure =>
+      category == NotificationCategory.consultationClosure &&
+      relatedId != null &&
+      relatedId!.isNotEmpty;
+
   factory AppNotification.fromMap(Map<String, dynamic> map) {
     final rawType = map['type']?.toString().toUpperCase() ?? 'INFO';
     final type = switch (rawType) {
@@ -53,6 +59,7 @@ class AppNotification {
       'APPOINTMENT_REMINDER' => NotificationCategory.appointmentReminder,
       'CHAT_MESSAGE' => NotificationCategory.chatMessage,
       'CLINIC_INVITATION' => NotificationCategory.clinicInvitation,
+      'CONSULTATION_CLOSURE' => NotificationCategory.consultationClosure,
       'SYSTEM' => NotificationCategory.system,
       _ => NotificationCategory.unknown,
     };

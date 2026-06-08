@@ -39,11 +39,14 @@ class AppRoutes {
   static const String doctorSchedule = '/doctor_schedule';
   static const String doctorProfile = '/doctor_profile';
   static const String ambulanceDashboard = '/ambulance_dashboard';
+  static const String ambulanceEmergencyDetail = '/ambulance_emergency_detail';
+  static const String ambulanceCrewProfile = '/ambulance_crew_profile';
   static const String pharmacyAdmin = '/pharmacy_admin';
   static const String adminDashboard = '/admin_dashboard';
   static const String superAdminDashboard = '/super_admin_dashboard';
   static const String clinicAdminDashboard = '/clinic_admin_dashboard';
   static const String clinicAssignDoctor = '/clinic_assign_doctor';
+  static const String clinicAmbulanceFleet = '/clinic_ambulance_fleet';
   static const String clinicAdminPassword = '/clinic_admin_password';
   static const String adminCreateDoctor = '/admin/create_doctor';
   static const String pharmacyOps = '/pharmacy_ops';
@@ -59,6 +62,7 @@ class AppRoutes {
   static const String clinicReception = '/clinic_reception';
   static const String erDashboard = '/er_dashboard';
   static const String clinicNetwork = '/clinic_network';
+  static const String medicalNetworkMap = '/medical_network_map';
   static const String insuranceWallet = '/insurance_wallet';
   static const String clinicBilling = '/clinic_billing';
   static const String radiologyMarketplace = '/radiology_marketplace';
@@ -178,9 +182,15 @@ class AppRoutes {
     ),
     AppRouteDestination(
       path: ambulanceDashboard,
-      label: 'Conductor',
+      label: 'Emergencias',
       icon: Icons.emergency_rounded,
-      roles: {Role.driver},
+      roles: {Role.driver, Role.paramedic, Role.ambulanceNurse},
+    ),
+    AppRouteDestination(
+      path: ambulanceCrewProfile,
+      label: 'Perfil',
+      icon: Icons.person_rounded,
+      roles: {Role.driver, Role.paramedic, Role.ambulanceNurse},
     ),
     AppRouteDestination(
       path: paramedicDashboard,
@@ -320,10 +330,11 @@ class AppRoutes {
     if (role == Role.patient) {
       const essentialPatientRoutes = [
         dashboard,
-        patientShareExams,
-        patientProfile,
+        messages,
         schedule,
         appointments,
+        patientShareExams,
+        patientProfile,
         ambulanceCheckout,
         medicalHistory,
       ];
@@ -398,7 +409,13 @@ class AppRoutes {
     if (role == Role.driver) {
       return _destinationsForPaths([
         ambulanceDashboard,
-        paramedicDashboard,
+        ambulanceCrewProfile,
+      ]);
+    }
+    if (role == Role.paramedic || role == Role.ambulanceNurse) {
+      return _destinationsForPaths([
+        ambulanceDashboard,
+        ambulanceCrewProfile,
       ]);
     }
     if (role == Role.clinicStaff) {
@@ -423,6 +440,12 @@ class AppRoutes {
     adminCreateDoctor: {Role.clinicAdmin},
     clinicAssignDoctor: {Role.clinicAdmin},
     clinicAdminPassword: {Role.clinicAdmin},
+    clinicAmbulanceFleet: {Role.clinicAdmin},
+    ambulanceEmergencyDetail: {
+      Role.driver,
+      Role.paramedic,
+      Role.ambulanceNurse,
+    },
     pharmacyAdminManage: {Role.pharmacyAdmin, Role.pharmacy},
     doctorSchedule: {Role.doctor},
     doctorProfile: {Role.doctor},
@@ -481,6 +504,8 @@ class AppRoutes {
         return 'Gestionar médicos';
       case clinicAdminPassword:
         return 'Cambiar contraseña';
+      case clinicAmbulanceFleet:
+        return 'Movilización sanitaria';
       case pharmacyAdminManage:
         return 'Gestión de farmacia';
       case labExamsCatalog:
@@ -503,7 +528,16 @@ class AppRoutes {
     gatewayDebug: (_) => const GatewayDebugPage(),
     schedule: (_) => const ScheduleAppointmentPage(),
     appointments: (_) => const MyAppointmentsPage(),
-    tracking: (_) => const AmbulanceTracking(),
+    tracking: (context) {
+      final raw = ModalRoute.of(context)?.settings.arguments;
+      final Map<String, dynamic>? args = raw is Map<String, dynamic>
+          ? raw
+          : raw is Map
+              ? Map<String, dynamic>.from(raw)
+              : null;
+      final emergencyId = args?['emergencyId']?.toString() ?? '';
+      return AmbulanceTracking(emergencyId: emergencyId);
+    },
     prescriptions: (_) => const PrescriptionsPage(),
     videoCall: (context) {
       final raw = ModalRoute.of(context)?.settings.arguments;
@@ -521,19 +555,31 @@ class AppRoutes {
     doctorDashboard: (_) => const DoctorDashboard(),
     doctorSchedule: (_) => const DoctorSchedulePage(),
     doctorProfile: (_) => const DoctorProfilePage(),
-    ambulanceDashboard: (_) => const AmbulanceDriverDashboard(),
+    ambulanceDashboard: (_) => const AmbulanceCrewDashboard(),
     pharmacyAdmin: (_) => const PharmacyAdminDashboard(),
     adminDashboard: (_) => const SuperAdminDashboard(),
     superAdminDashboard: (_) => const SuperAdminDashboard(),
     clinicAdminDashboard: (_) => const ClinicAdminDashboard(),
     clinicAssignDoctor: (_) => const ClinicAssignDoctorPage(),
+    clinicAmbulanceFleet: (_) => const ClinicAmbulanceFleetPage(),
     clinicAdminPassword: (_) => const ClinicAdminPasswordPage(),
     adminCreateDoctor: (_) => const CreateDoctorPage(),
     pharmacyOps: (_) => const PharmacyOpsDashboard(),
     pharmacyAdminManage: (_) => const PharmacyAdminManagePage(),
     fullInventory: (_) => const FullInventoryPage(),
     ambulanceCheckout: (_) => const AmbulanceCheckoutScreen(),
-    paramedicDashboard: (_) => const ParamedicTransitScreen(),
+    paramedicDashboard: (_) => const AmbulanceCrewDashboard(),
+    ambulanceEmergencyDetail: (context) {
+      final raw = ModalRoute.of(context)?.settings.arguments;
+      final Map<String, dynamic>? args = raw is Map<String, dynamic>
+          ? raw
+          : raw is Map
+              ? Map<String, dynamic>.from(raw)
+              : null;
+      final emergencyId = args?['emergencyId']?.toString() ?? '';
+      return AmbulanceEmergencyDetailScreen(emergencyId: emergencyId);
+    },
+    ambulanceCrewProfile: (_) => const AmbulanceCrewProfilePage(),
     labMarketplace: (_) => const LabMarketplaceScreen(),
     labTechnician: (_) => const LabTechnicianDashboard(),
     labExamsCatalog: (_) => const LabExamsCatalogPage(),
@@ -542,10 +588,11 @@ class AppRoutes {
     clinicReception: (_) => const ClinicReceptionScreen(),
     erDashboard: (_) => const ERIncomingDashboard(),
     clinicNetwork: (_) => const ClinicNetworkScreen(),
+    medicalNetworkMap: (_) => const MedicalNetworkMapScreen(),
     insuranceWallet: (_) => const InsuranceWalletScreen(),
     clinicBilling: (_) => const ClinicBillingDashboard(),
     radiologyMarketplace: (_) => const RadiologyMarketplaceScreen(),
     erIncomingAlias: (_) => const ERIncomingDashboard(),
-    ambulanceDriverAlias: (_) => const AmbulanceDriverDashboard(),
+    ambulanceDriverAlias: (_) => const AmbulanceCrewDashboard(),
   };
 }

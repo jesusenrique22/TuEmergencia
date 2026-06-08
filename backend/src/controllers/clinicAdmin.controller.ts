@@ -6,13 +6,21 @@ import { createDoctorByAdmin } from '../services/adminDoctor.service';
 import {
   listDoctorsForFacility,
   listDoctorsNotInFacility,
-  unassignDoctorFromFacility,
+  removeDoctorFromFacility,
 } from '../services/clinicDoctorAssignment.service';
 import { ClinicInvitationStatus } from '../models/ClinicInvitation';
 import { inviteDoctorToFacility } from '../services/clinicInvitation.service';
 import { emitToFacility } from '../socket/realtimeGatewayClient';
 import { sanitizeUser } from '../utils/sanitizeUser';
 import { toApiDoc } from '../utils/apiDoc';
+import { UserRole } from '../types/enums';
+import { createStaffUser } from '../services/staffUser.service';
+import {
+  createAmbulanceUnit,
+  listFacilityAmbulances,
+  updateAmbulanceUnit,
+} from '../services/emergency.service';
+import { AmbulanceUnitStatus } from '../types/enums';
 
 async function getClinicAdminContext(userId: string) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -141,16 +149,27 @@ export const unassignDoctor = async (req: AuthRequest, res: Response) => {
     return res.status(400).json({ error: 'doctorUserId es obligatorio' });
   }
 
+  const deleteAccount =
+    req.query.deleteAccount === 'true' ||
+    req.query.deleteAccount === '1' ||
+    req.body?.deleteAccount === true;
+
   try {
-    const result = await unassignDoctorFromFacility(doctorUserId, ctx.facility.id);
+    const result = await removeDoctorFromFacility(doctorUserId, ctx.facility.id, {
+      deleteIfLastFacility: deleteAccount,
+    });
     emitToFacility(ctx.facility.id, 'clinic:roster:updated', {
-      reason: 'doctor_unassigned',
+      reason: result.action === 'deleted' ? 'doctor_deleted' : 'doctor_unassigned',
       facilityId: ctx.facility.id,
       doctorUserId,
     });
     res.json({
-      profile: result.profile,
-      message: 'Médico desvinculado de la clínica',
+      action: result.action,
+      profile: result.action === 'unassigned' ? result.profile : undefined,
+      message:
+        result.action === 'deleted'
+          ? 'Cuenta de médico eliminada del sistema'
+          : 'Médico desvinculado de la clínica',
     });
   } catch (e) {
     res.status(400).json({ error: (e as Error).message });
@@ -216,4 +235,242 @@ export const changeMyPassword = async (req: AuthRequest, res: Response) => {
   });
 
   res.json({ message: 'Contraseña actualizada correctamente' });
+};
+
+const AMBULANCE_CREW_ROLES = [
+  UserRole.AMBULANCE_DRIVER,
+  UserRole.PARAMEDIC,
+  UserRole.AMBULANCE_NURSE,
+] as const;
+
+function facilityAmbulanceStaffWhere(facilityId: string, role: UserRole) {
+  return {
+    role,
+    isActive: true,
+    OR: [
+      { managedFacilityId: facilityId },
+      { ambulanceUnitsAsDriver: { some: { facilityId } } },
+      { ambulanceUnitsAsParamedic: { some: { facilityId } } },
+      { ambulanceUnitsAsNurse: { some: { facilityId } } },
+    ],
+  };
+}
+
+export const listAmbulanceDrivers = async (req: AuthRequest, res: Response) => {
+  const ctx = await getClinicAdminContext(req.user!.id);
+  if (!ctx?.facility) {
+    return res.status(400).json({ error: 'Sin clínica asignada' });
+  }
+
+  const drivers = await prisma.user.findMany({
+    where: facilityAmbulanceStaffWhere(ctx.facility.id, UserRole.AMBULANCE_DRIVER),
+    select: { id: true, name: true, email: true, phone: true, profilePic: true, role: true },
+    orderBy: { name: 'asc' },
+  });
+
+  res.json(drivers.map(toApiDoc));
+};
+
+export const listAmbulanceStaff = async (req: AuthRequest, res: Response) => {
+  const ctx = await getClinicAdminContext(req.user!.id);
+  if (!ctx?.facility) {
+    return res.status(400).json({ error: 'Sin clínica asignada' });
+  }
+
+  const roleParam = String(req.query.role ?? '').toUpperCase();
+  const roles = roleParam
+    ? AMBULANCE_CREW_ROLES.filter((r) => r === roleParam)
+    : [...AMBULANCE_CREW_ROLES];
+
+  if (roleParam && roles.length === 0) {
+    return res.status(400).json({ error: 'Rol de personal inválido' });
+  }
+
+  const staff = await prisma.user.findMany({
+    where: {
+      role: { in: [...roles] },
+      isActive: true,
+      OR: [
+        { managedFacilityId: ctx.facility.id },
+        { ambulanceUnitsAsDriver: { some: { facilityId: ctx.facility.id } } },
+        { ambulanceUnitsAsParamedic: { some: { facilityId: ctx.facility.id } } },
+        { ambulanceUnitsAsNurse: { some: { facilityId: ctx.facility.id } } },
+      ],
+    },
+    select: { id: true, name: true, email: true, phone: true, profilePic: true, role: true },
+    orderBy: { name: 'asc' },
+  });
+
+  res.json(staff.map(toApiDoc));
+};
+
+export const createAmbulanceStaff = async (req: AuthRequest, res: Response) => {
+  const ctx = await getClinicAdminContext(req.user!.id);
+  if (!ctx?.facility) {
+    return res.status(400).json({ error: 'Sin clínica asignada' });
+  }
+
+  const { name, email, phone, role } = req.body as {
+    name?: string;
+    email?: string;
+    phone?: string;
+    role?: string;
+  };
+
+  if (!name?.trim() || !email?.trim()) {
+    return res.status(400).json({ error: 'Nombre y correo son obligatorios' });
+  }
+
+  const staffRole = String(role ?? UserRole.AMBULANCE_DRIVER).toUpperCase() as UserRole;
+  if (!AMBULANCE_CREW_ROLES.includes(staffRole as (typeof AMBULANCE_CREW_ROLES)[number])) {
+    return res.status(400).json({ error: 'Rol de personal inválido' });
+  }
+
+  try {
+    const result = await createStaffUser({
+      name,
+      email,
+      phone,
+      role: staffRole,
+      managedFacilityId: ctx.facility.id,
+      createdBy: req.user!.id,
+    });
+    res.status(201).json(result);
+  } catch (e) {
+    const message = (e as Error).message;
+    res.status(message.includes('ya está') ? 409 : 400).json({ error: message });
+  }
+};
+
+export const createAmbulanceDriver = async (req: AuthRequest, res: Response) => {
+  const ctx = await getClinicAdminContext(req.user!.id);
+  if (!ctx?.facility) {
+    return res.status(400).json({ error: 'Sin clínica asignada' });
+  }
+
+  const { name, email, phone } = req.body as {
+    name?: string;
+    email?: string;
+    phone?: string;
+  };
+
+  if (!name?.trim() || !email?.trim()) {
+    return res.status(400).json({ error: 'Nombre y correo son obligatorios' });
+  }
+
+  try {
+    const result = await createStaffUser({
+      name,
+      email,
+      phone,
+      role: UserRole.AMBULANCE_DRIVER,
+      managedFacilityId: ctx.facility.id,
+      createdBy: req.user!.id,
+    });
+    res.status(201).json(result);
+  } catch (e) {
+    const message = (e as Error).message;
+    res.status(message.includes('ya está') ? 409 : 400).json({ error: message });
+  }
+};
+
+export const listAmbulances = async (req: AuthRequest, res: Response) => {
+  const ctx = await getClinicAdminContext(req.user!.id);
+  if (!ctx?.facility) {
+    return res.status(400).json({ error: 'Sin clínica asignada' });
+  }
+  const units = await listFacilityAmbulances(ctx.facility.id);
+  res.json(units.map(toApiDoc));
+};
+
+export const createAmbulance = async (req: AuthRequest, res: Response) => {
+  const ctx = await getClinicAdminContext(req.user!.id);
+  if (!ctx?.facility) {
+    return res.status(400).json({ error: 'Sin clínica asignada' });
+  }
+
+  const { plateNumber, callSign, driverId, paramedicId, nurseId, latitude, longitude } =
+    req.body as {
+      plateNumber?: string;
+      callSign?: string;
+      driverId?: string;
+      paramedicId?: string;
+      nurseId?: string;
+      latitude?: number;
+      longitude?: number;
+    };
+
+  if (!plateNumber?.trim()) {
+    return res.status(400).json({ error: 'plateNumber es obligatorio' });
+  }
+
+  try {
+    const unit = await createAmbulanceUnit({
+      facilityId: ctx.facility.id,
+      plateNumber,
+      callSign,
+      driverId,
+      paramedicId,
+      nurseId,
+      latitude: latitude != null ? Number(latitude) : undefined,
+      longitude: longitude != null ? Number(longitude) : undefined,
+    });
+    res.status(201).json(toApiDoc(unit));
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+  }
+};
+
+export const patchAmbulance = async (req: AuthRequest, res: Response) => {
+  const ctx = await getClinicAdminContext(req.user!.id);
+  if (!ctx?.facility) {
+    return res.status(400).json({ error: 'Sin clínica asignada' });
+  }
+
+  const { plateNumber, callSign, driverId, paramedicId, nurseId, status, isActive, latitude, longitude } =
+    req.body as {
+      plateNumber?: string;
+      callSign?: string;
+      driverId?: string | null;
+      paramedicId?: string | null;
+      nurseId?: string | null;
+      status?: string;
+      isActive?: boolean;
+      latitude?: number;
+      longitude?: number;
+    };
+
+  try {
+    const unit = await updateAmbulanceUnit(req.params.unitId, ctx.facility!.id, {
+      plateNumber,
+      callSign,
+      driverId,
+      paramedicId,
+      nurseId,
+      status: status as AmbulanceUnitStatus | undefined,
+      isActive,
+    });
+
+    if (latitude != null && longitude != null) {
+      await prisma.ambulanceUnit.update({
+        where: { id: unit.id },
+        data: { latitude: Number(latitude), longitude: Number(longitude) },
+      });
+    }
+
+    const fresh = await prisma.ambulanceUnit.findUnique({
+      where: { id: unit.id },
+      include: {
+        driver: { select: { id: true, name: true, phone: true, profilePic: true } },
+        paramedic: { select: { id: true, name: true, phone: true, profilePic: true } },
+        nurse: { select: { id: true, name: true, phone: true, profilePic: true } },
+      },
+    });
+    if (!fresh) {
+      return res.status(404).json({ error: 'Unidad no encontrada' });
+    }
+    res.json(toApiDoc(fresh));
+  } catch (e) {
+    res.status(400).json({ error: (e as Error).message });
+  }
 };

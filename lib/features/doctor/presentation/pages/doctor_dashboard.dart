@@ -52,6 +52,7 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
   @override
   void initState() {
     super.initState();
+    AppRealtime.maintainSessionConnection();
     _notifSub = AppRealtime.chatSocket.onNotificationNew.listen(_onRealtimeNotification);
     _profileRefreshSub =
         AppRealtime.onDoctorProfileRefresh.listen((_) => _loadProfile());
@@ -119,10 +120,16 @@ class _DoctorDashboardState extends State<DoctorDashboard> {
           .where(
             (a) =>
                 a.status != AppointmentStatus.cancelled &&
-                a.dateTime.isAfter(now.subtract(const Duration(minutes: 1))),
+                (a.needsClosure ||
+                    a.dateTime.isAfter(now.subtract(const Duration(minutes: 1)))),
           )
           .toList()
-        ..sort((a, b) => a.dateTime.compareTo(b.dateTime));
+        ..sort((a, b) {
+          if (a.needsClosure != b.needsClosure) {
+            return a.needsClosure ? -1 : 1;
+          }
+          return a.dateTime.compareTo(b.dateTime);
+        });
 
       final todayOnly = upcoming.where((a) {
         final d = a.dateTime.toLocal();

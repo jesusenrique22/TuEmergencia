@@ -4,12 +4,26 @@ import { prisma } from '../lib/prisma';
 import { appointmentInclude, mapAppointment, mapMedicalHistory } from '../utils/prismaMappers';
 import { omitPassword, toApiDoc } from '../utils/apiDoc';
 import { UserRole } from '../types/enums';
+import { ensurePatientProfile } from '../services/userProfile.service';
 
 export const getMyProfile = async (req: AuthRequest, res: Response) => {
-  const profile = await prisma.patientProfile.findUnique({
+  let profile = await prisma.patientProfile.findUnique({
     where: { userId: req.user!.id },
     include: { weightControls: { orderBy: { sortOrder: 'asc' } } },
   });
+
+  if (!profile) {
+    const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
+    if (!user || user.role !== UserRole.PATIENT) {
+      return res.status(404).json({ error: 'Perfil no encontrado' });
+    }
+    await ensurePatientProfile(user);
+    profile = await prisma.patientProfile.findUnique({
+      where: { userId: req.user!.id },
+      include: { weightControls: { orderBy: { sortOrder: 'asc' } } },
+    });
+  }
+
   if (!profile) return res.status(404).json({ error: 'Perfil no encontrado' });
 
   const { weightControls, ...rest } = profile;
@@ -33,6 +47,13 @@ export const updateMyProfile = async (req: AuthRequest, res: Response) => {
   const userId = req.user!.id;
   const body = { ...req.body };
   delete body.weightControls;
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user || user.role !== UserRole.PATIENT) {
+    return res.status(404).json({ error: 'Perfil no encontrado' });
+  }
+
+  await ensurePatientProfile(user);
 
   const profile = await prisma.patientProfile.update({
     where: { userId },

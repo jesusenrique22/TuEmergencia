@@ -167,10 +167,24 @@ class _WebRtcCallPageState extends State<WebRtcCallPage> {
           video: _isVideo,
           callType: callType,
         );
-        call.sendOutgoingInvite(
+        final invited = await call.sendOutgoingInvite(
           callerName: AppSession.currentUser?.name ?? 'Usuario',
           callType: callType,
         );
+        if (!mounted || generation != _setupGeneration) {
+          await call.dispose();
+          return;
+        }
+        if (!invited) {
+          await call.dispose();
+          setState(() {
+            _error =
+                'No se pudo avisar al destinatario. Comprueba que tenga la app abierta '
+                'y el gateway activo (cd realtime-gateway && pnpm run dev).';
+            _initializing = false;
+          });
+          return;
+        }
       } else {
         await call.acceptIncomingCall(
           video: _isVideo,

@@ -4,8 +4,11 @@ import jwt from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
 import { UserRole } from '../types/enums';
 import { sanitizeUser } from '../utils/sanitizeUser';
+import { ensureProfilesForUser } from '../services/userProfile.service';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'vita-os-super-secret';
+import { jwtSecret } from '../config/secrets';
+
+const JWT_SECRET = jwtSecret();
 
 async function createRoleProfile(
   userId: string,
@@ -74,6 +77,8 @@ export const login = async (req: Request, res: Response) => {
     if (user.isActive === false) {
       return res.status(403).json({ error: 'Cuenta deshabilitada. Contacta al administrador.' });
     }
+
+    await ensureProfilesForUser(user);
 
     const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
     res.status(200).json({ user: sanitizeUser(user), token });

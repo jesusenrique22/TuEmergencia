@@ -1,8 +1,9 @@
 import type { RealtimeBroadcast } from '../services/realtimeOrchestration.service';
 
+import { internalRealtimeSecret } from '../config/secrets';
+
 const GATEWAY_URL = process.env.REALTIME_GATEWAY_URL || 'http://localhost:3001';
-const INTERNAL_SECRET =
-  process.env.INTERNAL_REALTIME_SECRET || 'smart-medic-internal-dev';
+const INTERNAL_SECRET = internalRealtimeSecret();
 
 async function emitToRoom(
   room: string,

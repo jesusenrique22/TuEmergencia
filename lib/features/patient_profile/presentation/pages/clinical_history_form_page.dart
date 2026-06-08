@@ -141,6 +141,7 @@ class _ClinicalHistoryFormPageState extends State<ClinicalHistoryFormPage> {
       years--;
     }
     _age.text = years >= 0 ? '$years' : '';
+    if (mounted) setState(() {});
   }
 
   void _recalculateBmi() {
@@ -267,9 +268,11 @@ class _ClinicalHistoryFormPageState extends State<ClinicalHistoryFormPage> {
       locale: const Locale('es'),
     );
     if (picked != null) {
-      _birthDate.text =
-          '${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
-      _updateAge();
+      setState(() {
+        _birthDate.text =
+            '${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
+        _updateAge();
+      });
     }
   }
 
@@ -427,7 +430,13 @@ class _ClinicalHistoryFormPageState extends State<ClinicalHistoryFormPage> {
                 ),
               ),
             ),
-            _field(_age, 'Edad', Icons.numbers, readOnly: true),
+            _field(
+              _age,
+              'Edad',
+              Icons.numbers,
+              digitsOnly: true,
+              hint: 'Se calcula al elegir fecha',
+            ),
           ),
           const SizedBox(height: 12),
           _row(
@@ -468,13 +477,13 @@ class _ClinicalHistoryFormPageState extends State<ClinicalHistoryFormPage> {
           ),
           const SizedBox(height: 16),
           _row(
-            _field(_phone, 'Telf. celular', Icons.phone_android),
+            _field(_phone, 'Telf. celular', Icons.phone_android, phone: true),
             _field(_email, 'Email', Icons.mail_outline, required: true),
           ),
           const SizedBox(height: 12),
           _row(
             _field(_emergencyName, 'Nombre de un familiar', Icons.family_restroom),
-            _field(_emergencyPhone, 'Teléfono familiar', Icons.phone),
+            _field(_emergencyPhone, 'Teléfono familiar', Icons.phone, phone: true),
           ),
         ],
       ),
@@ -686,18 +695,29 @@ class _ClinicalHistoryFormPageState extends State<ClinicalHistoryFormPage> {
     IconData icon, {
     bool required = false,
     bool readOnly = false,
+    bool phone = false,
+    bool digitsOnly = false,
     String? hint,
     int maxLines = 1,
     TextInputType? keyboard,
   }) {
+    final inputType = phone
+        ? TextInputType.phone
+        : (digitsOnly || keyboard == TextInputType.number
+            ? TextInputType.number
+            : keyboard);
+    final formatters = phone || digitsOnly
+        ? [FilteringTextInputFormatter.digitsOnly]
+        : keyboard == TextInputType.number
+            ? [FilteringTextInputFormatter.allow(RegExp(r'[\d.,]'))]
+            : null;
+
     return TextFormField(
       controller: controller,
       readOnly: readOnly,
       maxLines: maxLines,
-      keyboardType: keyboard,
-      inputFormatters: keyboard == TextInputType.number
-          ? [FilteringTextInputFormatter.allow(RegExp(r'[\d.,]'))]
-          : null,
+      keyboardType: inputType,
+      inputFormatters: formatters,
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,

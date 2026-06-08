@@ -1,6 +1,16 @@
 import { prisma } from '../lib/prisma';
 import { AppointmentStatus, UserRole } from '../types/enums';
 import { formatApptWhen } from '../utils/appTimezone';
+import { appointmentNeedsClosure } from './consultationReport.service';
+import { emitToUser } from '../socket/realtimeGatewayClient';
+
+export const NotificationCategory = {
+  APPOINTMENT_REMINDER: 'APPOINTMENT_REMINDER',
+  CHAT_MESSAGE: 'CHAT_MESSAGE',
+  CLINIC_INVITATION: 'CLINIC_INVITATION',
+  CONSULTATION_CLOSURE: 'CONSULTATION_CLOSURE',
+  SYSTEM: 'SYSTEM',
+} as const;
 
 function reminderCopy(
   msUntil: number,
@@ -124,6 +134,126 @@ export async function syncAppointmentReminders(userId: string, role: UserRole): 
       category: 'APPOINTMENT_REMINDER',
       ...(activeIds.size > 0 ? { relatedId: { notIn: [...activeIds] } } : {}),
     },
+  });
+}
+
+/** Informes de consulta pendientes (solo médico). Se muestran primero en la bandeja. */
+export async function syncConsultationClosureReminders(doctorId: string): Promise<void> {
+  const now = new Date();
+  const appointments = await prisma.appointment.findMany({
+    where: {
+      doctorId,
+      status: { notIn: [AppointmentStatus.CANCELLED, AppointmentStatus.COMPLETED] },
+      consultationReport: { is: null },
+    },
+    include: {
+      patient: { select: { name: true } },
+    },
+    orderBy: { dateTime: 'asc' },
+  });
+
+  const activeIds = new Set<string>();
+
+  for (const appt of appointments) {
+    if (!appointmentNeedsClosure({ ...appt, consultationReport: null }, now)) continue;
+    activeIds.add(appt.id);
+    const patientName = appt.patient?.name ?? 'paciente';
+    const title = 'Informe de consulta pendiente';
+    const message = `${patientName} · Completa receta, diagnóstico e instrucciones`;
+
+    const existing = await prisma.notification.findFirst({
+      where: {
+        userId: doctorId,
+        category: NotificationCategory.CONSULTATION_CLOSURE,
+        relatedId: appt.id,
+      },
+    });
+
+    if (existing) {
+      await prisma.notification.update({
+        where: { id: existing.id },
+        data: {
+          title,
+          message,
+          type: 'WARNING',
+          relatedPath: '/consultation-closure',
+          isRead: false,
+        },
+      });
+    } else {
+      await prisma.notification.create({
+        data: {
+          userId: doctorId,
+          category: NotificationCategory.CONSULTATION_CLOSURE,
+          relatedId: appt.id,
+          title,
+          message,
+          type: 'WARNING',
+          relatedPath: '/consultation-closure',
+          isRead: false,
+        },
+      });
+      emitToUser(doctorId, 'notification:new', {
+        category: NotificationCategory.CONSULTATION_CLOSURE,
+        title,
+        relatedId: appt.id,
+      });
+    }
+  }
+
+  const removed = await prisma.notification.deleteMany({
+    where: {
+      userId: doctorId,
+      category: NotificationCategory.CONSULTATION_CLOSURE,
+      ...(activeIds.size > 0 ? { relatedId: { notIn: [...activeIds] } } : {}),
+    },
+  });
+
+  if (removed.count > 0) {
+    emitToUser(doctorId, 'notification:new', {
+      category: NotificationCategory.CONSULTATION_CLOSURE,
+      refresh: true,
+    });
+  }
+}
+
+export async function dismissConsultationClosureReminder(
+  doctorId: string,
+  appointmentId: string,
+): Promise<void> {
+  const deleted = await prisma.notification.deleteMany({
+    where: {
+      userId: doctorId,
+      category: NotificationCategory.CONSULTATION_CLOSURE,
+      relatedId: appointmentId,
+    },
+  });
+  if (deleted.count > 0) {
+    emitToUser(doctorId, 'notification:new', {
+      category: NotificationCategory.CONSULTATION_CLOSURE,
+      refresh: true,
+      relatedId: appointmentId,
+    });
+  }
+}
+
+export function sortNotificationsForInbox<
+  T extends { isRead: boolean; category: string; updatedAt: Date; createdAt: Date },
+>(rows: T[]): T[] {
+  const priority = (n: T) => {
+    if (!n.isRead && n.category === NotificationCategory.CONSULTATION_CLOSURE) return 0;
+    if (!n.isRead) return 1;
+    if (n.category === NotificationCategory.CONSULTATION_CLOSURE) return 2;
+    return 3;
+  };
+  return [...rows].sort((a, b) => {
+    const pa = priority(a);
+    const pb = priority(b);
+    if (pa !== pb) return pa - pb;
+    const bu = b.updatedAt.getTime();
+    const au = a.updatedAt.getTime();
+    if (bu !== au) return bu - au;
+    return b.createdAt.getTime() - a.createdAt.getTime();
   });
 }
 

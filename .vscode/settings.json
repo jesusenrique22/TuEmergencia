@@ -1,11 +1,39 @@
 {
+  "remote.autoForwardPorts": true,
+  "remote.autoForwardPortsSource": "output",
+  "remote.portsAttributes": {
+    "3000": {
+      "label": "Smart Medic API (solo local)",
+      "visibility": "private",
+      "onAutoForward": "notify"
+    },
+    "3001": {
+      "label": "Smart Medic Gateway (solo local)",
+      "visibility": "private",
+      "onAutoForward": "notify"
+    },
+    "8088": {
+      "label": "Smart Medic Web — túnel PÚBLICO",
+      "visibility": "public",
+      "onAutoForward": "notify"
+    }
+  },
+  "dart.flutterSdkPath": "/Users/smart/flutter",
+  "dart.debugExternalPackageLibraries": false,
+  "dart.debugSdkLibraries": false,
+  "dart.openDevTools": "flutter",
+  "debug.javascript.autoAttachFilter": "onlyWithFlag",
+  "debug.javascript.terminalOptions": {
+    "skipFiles": ["<node_internals>/**", "**/node_modules/**"]
+  },
   "dart.analysisExcludedFolders": [
     "flutter",
     "build",
     ".dart_tool",
     "ios/Pods",
     "macos/Pods",
-    "backend"
+    "backend",
+    "realtime-gateway"
   ],
   "files.watcherExclude": {
     "**/flutter/**": true,

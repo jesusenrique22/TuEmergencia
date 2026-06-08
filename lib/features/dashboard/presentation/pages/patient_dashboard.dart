@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../core/auth/app_session.dart';
+import '../../../../core/services/app_realtime.dart';
 import '../../../../core/navigation/app_navigation.dart';
 import '../../../../core/navigation/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -15,7 +16,6 @@ import '../../../appointments/presentation/widgets/appointment_reminder_host.dar
 import '../../../appointments/presentation/widgets/consultation_follow_up_section.dart';
 import '../../../patient_profile/data/patient_profile_repository.dart';
 
-/// Content of the Patient Dashboard page – now used inside ResponsiveScaffold.
 class PatientDashboardPage extends StatefulWidget {
   const PatientDashboardPage({super.key});
 
@@ -34,6 +34,7 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
   void initState() {
     super.initState();
     if (AppSession.isLoggedIn) {
+      AppRealtime.maintainSessionConnection();
       _refreshDashboard();
     }
   }
@@ -84,20 +85,10 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
   bool get _historyComplete =>
       PatientProfileRepository.activeProfile?.medicalHistoryCompleted ?? false;
 
-  Widget _buildHistoryReminder(BuildContext context) {
-    return ProfileAlertBanner(
-      message: 'Tu historia clínica está incompleta. Toca aquí para completarla.',
-      icon: Icons.medical_information_outlined,
-      color: Colors.amber.shade800,
-      onTap: () => Navigator.pushNamed(context, AppRoutes.clinicalHistory),
-    );
-  }
-
-  String _formatApptWhen(DateTime dt) => formatAppointmentDateTimeLong(dt);
-
   @override
   Widget build(BuildContext context) {
-    final isCompact = MediaQuery.sizeOf(context).width < 600;
+    final w = MediaQuery.sizeOf(context).width;
+    final isCompact = w < 600;
 
     return AppPage(
       padding: EdgeInsets.all(isCompact ? 16 : 28),
@@ -157,11 +148,22 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
     );
   }
 
+  Widget _buildHistoryReminder(BuildContext context) {
+    return ProfileAlertBanner(
+      message: 'Tu historia clínica está incompleta. Toca aquí para completarla.',
+      icon: Icons.medical_information_outlined,
+      color: Colors.amber.shade800,
+      onTap: () => Navigator.pushNamed(context, AppRoutes.clinicalHistory),
+    );
+  }
+
   Widget _buildHeader(BuildContext context) {
     final profile = PatientProfileRepository.activeProfile;
     final user = AppSession.currentUser;
     final displayName = profile?.fullName ?? user?.name ?? 'Paciente';
     final firstName = displayName.split(' ').first;
+    // On desktop (width ≥ 600) the sidebar already shows a logout button.
+    final isDesktop = MediaQuery.sizeOf(context).width >= 600;
 
     return ProfileGradientHeader(
       name: 'Hola, $firstName',
@@ -172,15 +174,16 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
       badgeColor: Colors.white,
       actions: [
         const NotificationBadge(onDarkBackground: true),
-        ProfileHeaderIconButton(
-          tooltip: 'Cerrar sesión',
-          onDarkBackground: true,
-          icon: Icons.logout_rounded,
-          onPressed: () {
-            AppSession.clear();
-            Navigator.pushReplacementNamed(context, AppRoutes.login);
-          },
-        ),
+        if (!isDesktop)
+          ProfileHeaderIconButton(
+            tooltip: 'Cerrar sesión',
+            onDarkBackground: true,
+            icon: Icons.logout_rounded,
+            onPressed: () {
+              AppSession.clear();
+              Navigator.pushReplacementNamed(context, AppRoutes.login);
+            },
+          ),
       ],
       stats: [
         ProfileStatChip(
@@ -219,6 +222,13 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
         route: AppRoutes.ambulanceCheckout,
         color: AppColors.emergency,
         isPrimary: true,
+      ),
+      _DashboardAction(
+        icon: Icons.chat_rounded,
+        title: 'Mensajes',
+        subtitle: 'Chat con tu médico',
+        route: AppRoutes.messages,
+        color: AppColors.secondary,
       ),
       _DashboardAction(
         icon: Icons.event_note_rounded,
@@ -263,28 +273,69 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
         const SizedBox(height: 16),
         LayoutBuilder(
           builder: (context, constraints) {
-            final isCompactLayout = constraints.maxWidth >= 560;
+            final w = constraints.maxWidth;
 
-            if (isCompactLayout) {
-              return Column(
-                children: [
-                  Row(
-                    children: [
-                      for (var i = 0; i < primary.length; i++) ...[
-                        if (i > 0) const SizedBox(width: 12),
-                        Expanded(
-                          child: _PrimaryActionTile(
-                            action: primary[i],
-                            onTap: () => Navigator.pushNamed(
-                              context,
-                              primary[i].route,
-                            ),
-                          ),
+            // Mobile: unified 2-column grid
+            if (w < 560) {
+              return GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 10,
+                  mainAxisExtent: 76,
+                ),
+                itemCount: actions.length,
+                itemBuilder: (context, index) {
+                  final a = actions[index];
+                  return _EssentialActionCard(
+                    action: a,
+                    onTap: () => Navigator.pushNamed(context, a.route),
+                  );
+                },
+              );
+            }
+
+            // Tablet / desktop: primary tiles side-by-side + secondary grid
+            final secondaryCols = w >= 720 ? 2 : 1;
+            return Column(
+              children: [
+                Row(
+                  children: [
+                    for (var i = 0; i < primary.length; i++) ...[
+                      if (i > 0) const SizedBox(width: 12),
+                      Expanded(
+                        child: _PrimaryActionTile(
+                          action: primary[i],
+                          onTap: () =>
+                              Navigator.pushNamed(context, primary[i].route),
                         ),
-                      ],
+                      ),
                     ],
-                  ),
-                  const SizedBox(height: 12),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                if (secondaryCols == 2)
+                  GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 10,
+                      mainAxisSpacing: 10,
+                      mainAxisExtent: 72,
+                    ),
+                    itemCount: secondary.length,
+                    itemBuilder: (context, index) {
+                      final a = secondary[index];
+                      return _EssentialActionCard(
+                        action: a,
+                        onTap: () => Navigator.pushNamed(context, a.route),
+                      );
+                    },
+                  )
+                else
                   AppPanel(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 6,
@@ -293,36 +344,111 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
                     child: Column(
                       children: secondary
                           .map(
-                            (action) => _ServiceRow(
-                              action: action,
+                            (a) => _ServiceRow(
+                              action: a,
                               onTap: () =>
-                                  Navigator.pushNamed(context, action.route),
+                                  Navigator.pushNamed(context, a.route),
                             ),
                           )
                           .toList(),
                     ),
                   ),
-                ],
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildServiceMarketplace(BuildContext context) {
+    final services = [
+      _DashboardAction(
+        icon: Icons.science_rounded,
+        title: 'Laboratorios',
+        subtitle: 'Pruebas, paquetes y resultados',
+        route: AppRoutes.labMarketplace,
+        color: AppColors.accent,
+      ),
+      _DashboardAction(
+        icon: Icons.assignment_turned_in_rounded,
+        title: 'Resultados',
+        subtitle: 'Consulta y descarga estudios',
+        route: AppRoutes.labResults,
+        color: AppColors.info,
+      ),
+      _DashboardAction(
+        icon: Icons.local_pharmacy_rounded,
+        title: 'Farmacia',
+        subtitle: 'Compra medicamentos y receta',
+        route: AppRoutes.pharmacy,
+        color: AppColors.secondary,
+      ),
+      _DashboardAction(
+        icon: Icons.shield_rounded,
+        title: 'Seguro',
+        subtitle: 'Pólizas y copagos',
+        route: AppRoutes.insuranceWallet,
+        color: AppColors.warning,
+      ),
+      _DashboardAction(
+        icon: Icons.business_rounded,
+        title: 'Clínicas',
+        subtitle: 'Red aliada y cobertura',
+        route: AppRoutes.clinicNetwork,
+        color: AppColors.primaryDark,
+      ),
+      _DashboardAction(
+        icon: Icons.image_search_rounded,
+        title: 'Radiología',
+        subtitle: 'Rayos X, ecos y resonancia',
+        route: AppRoutes.radiologyMarketplace,
+        color: AppColors.accent,
+      ),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const AppSectionHeader(
+          title: 'Servicios complementarios',
+          subtitle: 'Más servicios para tu salud integral.',
+        ),
+        const SizedBox(height: 16),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth >= 600) {
+              return GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 10,
+                  mainAxisExtent: 72,
+                ),
+                itemCount: services.length,
+                itemBuilder: (context, index) {
+                  final s = services[index];
+                  return _EssentialActionCard(
+                    action: s,
+                    onTap: () => Navigator.pushNamed(context, s.route),
+                  );
+                },
               );
             }
-
-            return GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                mainAxisExtent: 76,
+            return AppPanel(
+              padding: const EdgeInsets.all(10),
+              child: Column(
+                children: services
+                    .map(
+                      (s) => _ServiceRow(
+                        action: s,
+                        onTap: () => Navigator.pushNamed(context, s.route),
+                      ),
+                    )
+                    .toList(),
               ),
-              itemCount: actions.length,
-              itemBuilder: (context, index) {
-                final action = actions[index];
-                return _EssentialActionCard(
-                  action: action,
-                  onTap: () => Navigator.pushNamed(context, action.route),
-                );
-              },
             );
           },
         ),
@@ -407,9 +533,9 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
                 child: OutlinedButton.icon(
                   style: _dashboardButtonStyle(outlined: true),
                   onPressed: () =>
-                      Navigator.pushNamed(context, AppRoutes.medicalHistory),
-                  icon: const Icon(Icons.history_edu_rounded, size: 18),
-                  label: const Text('Historial'),
+                      Navigator.pushNamed(context, AppRoutes.messages),
+                  icon: const Icon(Icons.chat_rounded, size: 18),
+                  label: const Text('Mensajes'),
                 ),
               ),
             ],
@@ -448,77 +574,7 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
     );
   }
 
-  Widget _buildServiceMarketplace(BuildContext context) {
-    final services = [
-      _DashboardAction(
-        icon: Icons.science_rounded,
-        title: 'Laboratorios',
-        subtitle: 'Pruebas, paquetes y resultados',
-        route: AppRoutes.labMarketplace,
-        color: AppColors.accent,
-      ),
-      _DashboardAction(
-        icon: Icons.assignment_turned_in_rounded,
-        title: 'Resultados',
-        subtitle: 'Consulta y descarga estudios',
-        route: AppRoutes.labResults,
-        color: AppColors.info,
-      ),
-      _DashboardAction(
-        icon: Icons.local_pharmacy_rounded,
-        title: 'Farmacia',
-        subtitle: 'Compra medicamentos y receta',
-        route: AppRoutes.pharmacy,
-        color: AppColors.secondary,
-      ),
-      _DashboardAction(
-        icon: Icons.shield_rounded,
-        title: 'Seguro',
-        subtitle: 'Pólizas y copagos',
-        route: AppRoutes.insuranceWallet,
-        color: AppColors.warning,
-      ),
-      _DashboardAction(
-        icon: Icons.business_rounded,
-        title: 'Clínicas',
-        subtitle: 'Red aliada y cobertura',
-        route: AppRoutes.clinicNetwork,
-        color: AppColors.primaryDark,
-      ),
-      _DashboardAction(
-        icon: Icons.image_search_rounded,
-        title: 'Radiología',
-        subtitle: 'Rayos X, ecos y resonancia',
-        route: AppRoutes.radiologyMarketplace,
-        color: AppColors.accent,
-      ),
-    ];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const AppSectionHeader(
-          title: 'Servicios complementarios',
-          subtitle:
-              'Accesos menos frecuentes, agrupados para no saturar el inicio.',
-        ),
-        const SizedBox(height: 16),
-        AppPanel(
-          padding: const EdgeInsets.all(10),
-          child: Column(
-            children: services
-                .map(
-                  (service) => _ServiceRow(
-                    action: service,
-                    onTap: () => Navigator.pushNamed(context, service.route),
-                  ),
-                )
-                .toList(),
-          ),
-        ),
-      ],
-    );
-  }
+  String _formatApptWhen(DateTime dt) => formatAppointmentDateTimeLong(dt);
 
   Widget _buildUpcomingAppointment(BuildContext context) {
     final appt = _nextAppointment;
@@ -548,56 +604,56 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
                   ),
                 )
               else
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: AppColors.primaryLight,
-                      borderRadius: BorderRadius.circular(16),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryLight,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Icon(
+                        Icons.health_and_safety_rounded,
+                        color: AppColors.primary,
+                      ),
                     ),
-                    child: const Icon(
-                      Icons.health_and_safety_rounded,
-                      color: AppColors.primary,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          appt.doctorName.isNotEmpty
-                              ? appt.doctorName
-                              : 'Médico',
-                          style: const TextStyle(
-                            color: AppColors.textPrimary,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            appt.doctorName.isNotEmpty ? appt.doctorName : 'Médico',
+                            style: const TextStyle(
+                              color: AppColors.textPrimary,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        Text(
-                          [
-                            if (appt.specialty.isNotEmpty) appt.specialty,
-                            _formatApptWhen(appt.dateTime),
-                            if (appt.type == AppointmentType.online)
-                              'Telemedicina',
-                          ].join(' • '),
-                          style: const TextStyle(color: AppColors.textSecondary),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
+                          Text(
+                            [
+                              if (appt.specialty.isNotEmpty) appt.specialty,
+                              _formatApptWhen(appt.dateTime),
+                              if (appt.type == AppointmentType.online)
+                                'Telemedicina',
+                            ].join(' • '),
+                            style: const TextStyle(
+                              color: AppColors.textSecondary,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  if (appt.type == AppointmentType.online)
-                    IconButton(
-                      icon: const Icon(Icons.videocam_rounded),
-                      onPressed: () =>
-                          AppNavigation.openTelemedicineViaMessages(context),
-                    ),
-                ],
-              ),
+                    if (appt.type == AppointmentType.online)
+                      IconButton(
+                        icon: const Icon(Icons.videocam_rounded),
+                        onPressed: () =>
+                            AppNavigation.openTelemedicineViaMessages(context),
+                      ),
+                  ],
+                ),
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -614,10 +670,8 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
                   Expanded(
                     child: FilledButton.icon(
                       style: _dashboardButtonStyle(outlined: false),
-                      onPressed: () => Navigator.pushNamed(
-                        context,
-                        AppRoutes.appointments,
-                      ),
+                      onPressed: () =>
+                          Navigator.pushNamed(context, AppRoutes.appointments),
                       icon: const Icon(Icons.event_note_rounded, size: 18),
                       label: const Text('Mis citas'),
                     ),
@@ -673,10 +727,7 @@ class _EssentialActionCard extends StatelessWidget {
   final _DashboardAction action;
   final VoidCallback onTap;
 
-  const _EssentialActionCard({
-    required this.action,
-    required this.onTap,
-  });
+  const _EssentialActionCard({required this.action, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -867,7 +918,7 @@ class _ServiceRow extends StatelessWidget {
   }
 }
 
-/// Wrapper that integrates the dashboard content into the global responsive scaffold.
+/// Wrapper que integra el dashboard dentro del scaffold responsive global.
 class PatientDashboard extends StatelessWidget {
   const PatientDashboard({super.key});
 

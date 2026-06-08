@@ -6,7 +6,8 @@
   "main": "dist/index.js",
   "scripts": {
     "start": "node dist/index.js",
-    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "dev": "bash ../scripts/_bootstrap-dev-env.sh && ts-node-dev --respawn --transpile-only src/index.ts",
+    "dev:debug": "bash ../scripts/_bootstrap-dev-env.sh && ts-node-dev --inspect=9231 --transpile-only --no-notify src/index.ts",
     "build": "tsc"
   },
   "dependencies": {

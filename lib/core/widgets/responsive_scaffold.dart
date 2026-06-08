@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../branding/app_branding.dart';
 import '../auth/app_session.dart';
 import '../navigation/app_navigation.dart';
 import '../navigation/app_routes.dart';
@@ -227,41 +228,27 @@ class _SidebarBrand extends StatelessWidget {
           mainAxisAlignment:
               showLabels ? MainAxisAlignment.start : MainAxisAlignment.center,
           children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(16),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Image.asset(
+                AppBranding.appIcon,
+                width: 48,
+                height: 48,
+                fit: BoxFit.cover,
               ),
-              child: const Icon(Icons.favorite_rounded, color: Colors.white),
             ),
             if (showLabels) ...[
               const SizedBox(width: 12),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'VITA OS',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    Text(
-                      'Smart Medic',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  'Smart Medic',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
               ),
             ],

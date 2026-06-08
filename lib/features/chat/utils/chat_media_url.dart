@@ -1,8 +1,3 @@
-import '../../../core/config/api_config.dart';
+import '../../../core/network/api_url.dart';
 
-String chatMediaFullUrl(String? path) {
-  if (path == null || path.isEmpty) return '';
-  if (path.startsWith('http')) return path;
-  final base = ApiConfig.baseUrl.replaceAll(RegExp(r'/+$'), '');
-  return '$base$path';
-}
+String chatMediaFullUrl(String? path) => ApiUrl.resolve(path ?? '');

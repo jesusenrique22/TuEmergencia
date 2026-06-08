@@ -110,7 +110,8 @@ export const listFacilities = async (_req: AuthRequest, res: Response) => {
 };
 
 export const createFacility = async (req: AuthRequest, res: Response) => {
-  const { name, type, address, city, phone } = req.body;
+  const { name, type, address, city, phone, latitude, longitude, hasEmergencyRoom } =
+    req.body;
 
   if (!name?.trim()) {
     return res.status(400).json({ error: 'El nombre de la clínica es obligatorio' });
@@ -136,6 +137,9 @@ export const createFacility = async (req: AuthRequest, res: Response) => {
       address: address.trim(),
       city: city?.trim() || undefined,
       phone: phone?.trim() || undefined,
+      latitude: latitude != null ? Number(latitude) : undefined,
+      longitude: longitude != null ? Number(longitude) : undefined,
+      hasEmergencyRoom: Boolean(hasEmergencyRoom),
       isActive: true,
       serviceEnabled: true,
     },

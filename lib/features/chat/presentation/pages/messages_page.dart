@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../../../core/auth/app_session.dart';
 import '../../../../core/config/api_config.dart';
 import '../../../../core/debug/dev_tools_config.dart';
+import '../../../../core/connectivity/service_connectivity.dart';
 import '../../../../core/network/gateway_health.dart';
 import '../../../../core/utils/date_format.dart';
 import '../../../../core/navigation/app_routes.dart';
@@ -47,6 +48,8 @@ class _MessagesPageState extends State<MessagesPage>
   String? _chatError;
   String? _clinicalError;
   String? _joinedConversationId;
+  Timer? _chatRetryTimer;
+  int _chatLoadAttempts = 0;
 
   StreamSubscription<Map<String, dynamic>>? _messageSub;
   StreamSubscription<Map<String, dynamic>>? _conversationSub;
@@ -70,14 +73,22 @@ class _MessagesPageState extends State<MessagesPage>
     _connectionSub = AppRealtime.chatSocket.onConnectionChanged.listen((ok) {
       if (!mounted) return;
       setState(() => _socketConnected = ok);
-      if (ok && _joinedConversationId != null) {
-        AppRealtime.chatSocket.joinConversation(_joinedConversationId!);
+      if (ok) {
+        ServiceConnectivity.instance.invalidateCache();
+        if (_joinedConversationId != null) {
+          AppRealtime.chatSocket.joinConversation(_joinedConversationId!);
+        }
+        if (_loadingChats || _conversations.isEmpty) {
+          unawaited(_loadChats());
+        }
       }
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       unawaited(AppRealtime.connectIfNeeded());
     });
+    // Mantener socket activo en Mensajes (recibir call:incoming aunque no estés en el chat).
+    AppRealtime.maintainSessionConnection();
     _loadChats();
     _loadClinical();
   }
@@ -104,6 +115,7 @@ class _MessagesPageState extends State<MessagesPage>
 
   @override
   void dispose() {
+    _chatRetryTimer?.cancel();
     if (_joinedConversationId != null) {
       AppRealtime.chatSocket.leaveConversation(_joinedConversationId!);
     }
@@ -163,7 +175,9 @@ class _MessagesPageState extends State<MessagesPage>
     }
   }
 
-  Future<void> _loadChats() async {
+  Future<void> _loadChats({bool isRetry = false}) async {
+    if (!isRetry) _chatLoadAttempts = 0;
+    _chatRetryTimer?.cancel();
     setState(() {
       _loadingChats = true;
       _chatError = null;
@@ -180,6 +194,7 @@ class _MessagesPageState extends State<MessagesPage>
         return bt.compareTo(at);
       });
       if (!mounted) return;
+      _chatLoadAttempts = 0;
       setState(() {
         _conversations = list;
         _loadingChats = false;
@@ -190,13 +205,24 @@ class _MessagesPageState extends State<MessagesPage>
         _chatError = e.message;
         _loadingChats = false;
       });
+      _scheduleChatRetry();
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _chatError = 'No se pudieron cargar los chats';
         _loadingChats = false;
       });
+      _scheduleChatRetry();
     }
+  }
+
+  void _scheduleChatRetry() {
+    if (!mounted || _chatLoadAttempts >= 4) return;
+    _chatLoadAttempts++;
+    _chatRetryTimer?.cancel();
+    _chatRetryTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted) unawaited(_loadChats(isRetry: true));
+    });
   }
 
   Future<void> _loadClinical() async {
@@ -251,7 +277,7 @@ class _MessagesPageState extends State<MessagesPage>
     });
 
     final connectFuture =
-        AppRealtime.ensureConnected(timeout: const Duration(seconds: 4));
+        AppRealtime.ensureConnected(timeout: const Duration(seconds: 3));
     final msgsFuture = _chat.getMessages(c.id, kind: ChatMessageKind.chat);
 
     final socketOk = await connectFuture;
@@ -552,7 +578,7 @@ class _MessagesPageState extends State<MessagesPage>
     }
 
     final connected = await AppRealtime.ensureConnected(
-      timeout: const Duration(seconds: 12),
+      timeout: const Duration(seconds: 6),
     );
     if (!mounted) return;
     if (!connected) {
@@ -714,7 +740,23 @@ class _MessagesPageState extends State<MessagesPage>
       return const Center(child: CircularProgressIndicator());
     }
     if (_chatError != null) {
-      return Center(child: Text(_chatError!));
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(_chatError!, textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: () => unawaited(_loadChats()),
+                icon: const Icon(Icons.refresh),
+                label: const Text('Reintentar'),
+              ),
+            ],
+          ),
+        ),
+      );
     }
     if (_conversations.isEmpty) {
       return Center(

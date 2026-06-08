@@ -1,4 +1,5 @@
-import dotenv from 'dotenv';
+import '../loadEnv';
+
 import bcrypt from 'bcryptjs';
 import { connectDatabase, disconnectDatabase, prisma } from '../config/db';
 import {
@@ -8,11 +9,31 @@ import {
   PharmacyOrderStatus,
   UserRole,
 } from '../types/enums';
+import type { MedicalFacility, Pharmacy, Specialty, User } from '@prisma/client';
 
-dotenv.config();
+const FRESH_SEED =
+  process.argv.includes('--fresh') || process.env.SEED_FRESH === '1';
+const CONFIRMED =
+  process.argv.includes('--yes') || process.env.SEED_CONFIRM === '1';
+
+function exitSeedUsage(code = 0) {
+  console.log(`
+Seed demo — no se ejecuta solo. Opciones:
+
+  pnpm run db:seed -- --yes        Añade cuentas demo SIN borrar tus datos
+  pnpm run db:seed:fresh           Reset total + demo (destructivo)
+
+Pide explícitamente al agente o añade --yes cuando tú lo decidas.
+`);
+  process.exit(code);
+}
 
 async function clearDatabase() {
   await prisma.$transaction([
+    prisma.transitMedicalLog.deleteMany(),
+    prisma.emergencyChatMessage.deleteMany(),
+    prisma.emergencyRequest.deleteMany(),
+    prisma.ambulanceUnit.deleteMany(),
     prisma.chatMessage.deleteMany(),
     prisma.notification.deleteMany(),
     prisma.pharmacyOrder.deleteMany(),
@@ -37,235 +58,410 @@ async function clearDatabase() {
   ]);
 }
 
+async function ensureSpecialty(name: string, description: string): Promise<Specialty> {
+  return prisma.specialty.upsert({
+    where: { name },
+    create: { name, description },
+    update: {},
+  });
+}
+
+async function ensureFacility(data: {
+  name: string;
+  type: string;
+  address: string;
+  city: string;
+  latitude: number;
+  longitude: number;
+  hasEmergencyRoom: boolean;
+}): Promise<MedicalFacility> {
+  const existing = await prisma.medicalFacility.findFirst({
+    where: { name: data.name },
+  });
+  if (existing) return existing;
+  return prisma.medicalFacility.create({ data });
+}
+
+async function ensurePharmacy(data: {
+  name: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  logoUrl?: string;
+}): Promise<Pharmacy> {
+  const existing = await prisma.pharmacy.findFirst({ where: { name: data.name } });
+  if (existing) return existing;
+  return prisma.pharmacy.create({ data });
+}
+
+async function ensureLaboratory(data: {
+  name: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  logoUrl?: string;
+}) {
+  const existing = await prisma.laboratory.findFirst({ where: { name: data.name } });
+  if (existing) return existing;
+  return prisma.laboratory.create({ data });
+}
+
+async function ensureDemoUser(
+  email: string,
+  data: Record<string, unknown>,
+  passwordHash: string,
+): Promise<User> {
+  const existing = await prisma.user.findUnique({ where: { email } });
+  if (existing) return existing;
+  return prisma.user.create({
+    data: { email, password: passwordHash, ...data } as Parameters<
+      typeof prisma.user.create
+    >[0]['data'],
+  });
+}
+
 async function seed() {
   await connectDatabase();
-  await clearDatabase();
+
+  if (!CONFIRMED) {
+    exitSeedUsage(0);
+  }
+
+  if (FRESH_SEED) {
+    console.warn('⚠️  db:seed --fresh: borrando TODA la base de datos antes del seed demo.');
+    await clearDatabase();
+  } else {
+    console.log('Seed seguro: se conservan usuarios y datos que ya existen.');
+    console.log('(Reset total solo con: pnpm run db:seed:fresh)');
+  }
 
   const password = await bcrypt.hash('password', 10);
 
   const specialties = await Promise.all([
-    prisma.specialty.create({
-      data: { name: 'Cardiología', description: 'Enfermedades del corazón' },
-    }),
-    prisma.specialty.create({
-      data: { name: 'Medicina General', description: 'Atención primaria' },
-    }),
-    prisma.specialty.create({
-      data: { name: 'Dermatología', description: 'Piel y anexos' },
-    }),
-    prisma.specialty.create({
-      data: { name: 'Pediatría', description: 'Salud infantil' },
-    }),
+    ensureSpecialty('Cardiología', 'Enfermedades del corazón'),
+    ensureSpecialty('Medicina General', 'Atención primaria'),
+    ensureSpecialty('Dermatología', 'Piel y anexos'),
+    ensureSpecialty('Pediatría', 'Salud infantil'),
   ]);
 
   const facilities = await Promise.all([
-    prisma.medicalFacility.create({
-      data: {
-        name: 'Clínica Metropolitana',
-        type: 'CLINIC',
-        address: 'Av. Principal, Caracas',
-        city: 'Caracas',
-      },
+    ensureFacility({
+      name: 'Clínica Metropolitana',
+      type: 'CLINIC',
+      address: 'Av. Andrés Bello, Caracas',
+      city: 'Caracas',
+      latitude: 10.485,
+      longitude: -66.91,
+      hasEmergencyRoom: true,
     }),
-    prisma.medicalFacility.create({
-      data: {
-        name: 'Hospital Central',
-        type: 'HOSPITAL',
-        address: 'Centro Médico, Caracas',
-        city: 'Caracas',
-      },
+    ensureFacility({
+      name: 'Hospital Central',
+      type: 'HOSPITAL',
+      address: 'Centro Médico, Caracas',
+      city: 'Caracas',
+      latitude: 10.435,
+      longitude: -66.85,
+      hasEmergencyRoom: true,
     }),
-    prisma.medicalFacility.create({
-      data: {
-        name: 'Consultorio Norte',
-        type: 'CONSULTORY',
-        address: 'Zona Norte, Valencia',
-        city: 'Valencia',
-      },
+    ensureFacility({
+      name: 'Consultorio Norte',
+      type: 'CONSULTORY',
+      address: 'Zona Norte, Valencia',
+      city: 'Valencia',
+      latitude: 10.18,
+      longitude: -68.0,
+      hasEmergencyRoom: false,
     }),
-    prisma.medicalFacility.create({
-      data: {
-        name: 'Clínica San José',
-        type: 'CLINIC',
-        address: 'Los Palos Grandes, Caracas',
-        city: 'Caracas',
-      },
+    ensureFacility({
+      name: 'Clínica San José',
+      type: 'CLINIC',
+      address: 'Los Palos Grandes, Caracas',
+      city: 'Caracas',
+      latitude: 10.495,
+      longitude: -66.84,
+      hasEmergencyRoom: true,
     }),
   ]);
 
-  const superAdmin = await prisma.user.create({
-    data: {
-      email: 'admin@vita.com',
-      password,
+  const superAdmin = await ensureDemoUser(
+    'admin@vita.com',
+    {
       name: 'Super Admin VITA',
       role: UserRole.SUPER_ADMIN,
       phone: '+58 412-000-0001',
     },
-  });
+    password,
+  );
 
   const pharmacies = await Promise.all([
-    prisma.pharmacy.create({
-      data: {
-        name: 'FarmaVita Central',
-        address: 'Av. Libertador #123, Caracas',
-        logoUrl:
-          'https://images.unsplash.com/photo-1586015555751-63bb77f4322a?auto=format&fit=crop&q=80&w=100',
-      },
+    ensurePharmacy({
+      name: 'FarmaVita Central',
+      address: 'Av. Libertador #123, Caracas',
+      latitude: 10.49,
+      longitude: -66.88,
+      logoUrl:
+        'https://images.unsplash.com/photo-1586015555751-63bb77f4322a?auto=format&fit=crop&q=80&w=100',
     }),
-    prisma.pharmacy.create({
-      data: {
-        name: 'EcoMedic Express',
-        address: 'Calle 50 con Calle 72, Panamá',
-        logoUrl:
-          'https://images.unsplash.com/photo-1576602976047-174e57a47881?auto=format&fit=crop&q=80&w=100',
-      },
+    ensurePharmacy({
+      name: 'EcoMedic Express',
+      address: 'Calle 50 con Calle 72, Panamá',
+      latitude: 10.48,
+      longitude: -66.9,
+      logoUrl:
+        'https://images.unsplash.com/photo-1576602976047-174e57a47881?auto=format&fit=crop&q=80&w=100',
     }),
   ]);
 
-  const clinicAdmin = await prisma.user.create({
-    data: {
-      email: 'clinic.admin@vita.com',
-      password,
+  const clinicAdmin = await ensureDemoUser(
+    'clinic.admin@vita.com',
+    {
       name: 'Admin Clínica Metropolitana',
       role: UserRole.CLINIC_ADMIN,
       phone: '+58 412-000-0002',
       managedFacilityId: facilities[0].id,
       createdById: superAdmin.id,
     },
+    password,
+  );
+
+  const ambulanceDriver = await ensureDemoUser(
+    'conductor@vita.com',
+    {
+      name: 'Carlos Ruiz',
+      role: UserRole.AMBULANCE_DRIVER,
+      phone: '+58 414-555-0199',
+      managedFacilityId: facilities[0].id,
+      createdById: clinicAdmin.id,
+    },
+    password,
+  );
+
+  const ambulanceParamedic = await ensureDemoUser(
+    'paramedico@vita.com',
+    {
+      name: 'Ana Méndez',
+      role: UserRole.PARAMEDIC,
+      phone: '+58 414-555-0200',
+      managedFacilityId: facilities[0].id,
+      createdById: clinicAdmin.id,
+    },
+    password,
+  );
+
+  const ambulanceNurse = await ensureDemoUser(
+    'enfermera@vita.com',
+    {
+      name: 'Laura Gómez',
+      role: UserRole.AMBULANCE_NURSE,
+      phone: '+58 414-555-0201',
+      managedFacilityId: facilities[0].id,
+      createdById: clinicAdmin.id,
+    },
+    password,
+  );
+
+  const ambulanceCount = await prisma.ambulanceUnit.count({
+    where: { callSign: { in: ['VITA-04', 'VITA-07', 'VITA-12'] } },
+  });
+  if (ambulanceCount === 0) {
+    await prisma.ambulanceUnit.createMany({
+      data: [
+        {
+          facilityId: facilities[0].id,
+          plateNumber: 'AA-123-VZ',
+          callSign: 'VITA-04',
+          driverId: ambulanceDriver.id,
+          paramedicId: ambulanceParamedic.id,
+          nurseId: ambulanceNurse.id,
+          status: 'AVAILABLE',
+          latitude: 10.482,
+          longitude: -66.905,
+        },
+        {
+          facilityId: facilities[0].id,
+          plateNumber: 'BB-456-VZ',
+          callSign: 'VITA-07',
+          status: 'AVAILABLE',
+          latitude: 10.486,
+          longitude: -66.912,
+        },
+        {
+          facilityId: facilities[1].id,
+          plateNumber: 'CC-789-VZ',
+          callSign: 'VITA-12',
+          status: 'AVAILABLE',
+          latitude: 10.438,
+          longitude: -66.848,
+        },
+      ],
+    });
+  }
+
+  await prisma.ambulanceUnit.updateMany({
+    where: { callSign: 'VITA-04' },
+    data: {
+      driverId: ambulanceDriver.id,
+      paramedicId: ambulanceParamedic.id,
+      nurseId: ambulanceNurse.id,
+    },
   });
 
-  const pharmacyAdmin = await prisma.user.create({
-    data: {
-      email: 'pharmacy.admin@vita.com',
-      password,
+  const pharmacyAdmin = await ensureDemoUser(
+    'pharmacy.admin@vita.com',
+    {
       name: 'Admin FarmaVita',
       role: UserRole.PHARMACY_ADMIN,
       phone: '+58 412-000-0003',
       pharmacyId: pharmacies[0].id,
       createdById: superAdmin.id,
     },
-  });
+    password,
+  );
 
-  await prisma.user.create({
-    data: {
-      email: 'farmacista@vita.com',
-      password,
+  await ensureDemoUser(
+    'farmacista@vita.com',
+    {
       name: 'Ana Farmacéutica',
       role: UserRole.PHARMACIST,
       phone: '+58 412-000-0004',
       pharmacyId: pharmacies[0].id,
       createdById: pharmacyAdmin.id,
     },
-  });
+    password,
+  );
 
-  await prisma.user.create({
-    data: {
-      email: 'cajero@vita.com',
-      password,
+  await ensureDemoUser(
+    'cajero@vita.com',
+    {
       name: 'Luis Cajero',
       role: UserRole.PHARMACY_CASHIER,
       phone: '+58 412-000-0005',
       pharmacyId: pharmacies[0].id,
       createdById: pharmacyAdmin.id,
     },
-  });
+    password,
+  );
 
   const laboratories = await Promise.all([
-    prisma.laboratory.create({
-      data: {
-        name: 'BioLab Central',
-        address: 'Av. Principal, Caracas',
-        logoUrl:
-          'https://images.unsplash.com/photo-1579152276508-2d29944ef71d?auto=format&fit=crop&q=80&w=100',
-      },
+    ensureLaboratory({
+      name: 'BioLab Central',
+      address: 'Av. Principal, Caracas',
+      latitude: 10.478,
+      longitude: -66.905,
+      logoUrl:
+        'https://images.unsplash.com/photo-1579152276508-2d29944ef71d?auto=format&fit=crop&q=80&w=100',
     }),
-    prisma.laboratory.create({
-      data: {
-        name: 'Lab Diagnóstico VITA',
-        address: 'Centro Médico, Caracas',
-      },
+    ensureLaboratory({
+      name: 'Lab Diagnóstico VITA',
+      address: 'Centro Médico, Caracas',
+      latitude: 10.44,
+      longitude: -66.855,
     }),
   ]);
 
-  await prisma.user.create({
-    data: {
-      email: 'lab@tech.com',
-      password,
+  await ensureDemoUser(
+    'lab@tech.com',
+    {
       name: 'Técnico Laboratorio VITA',
       role: UserRole.LAB_TECH,
       phone: '+58 412-000-0006',
       laboratoryId: laboratories[0].id,
       createdById: superAdmin.id,
     },
-  });
+    password,
+  );
 
   const products = await Promise.all([
-    prisma.pharmacyProduct.create({
-      data: {
-        pharmacyId: pharmacies[0].id,
-        name: 'Amoxicilina 500mg',
-        brand: 'Genfar',
-        category: 'Antibióticos',
-        price: 12.5,
-        stock: 80,
-      },
-    }),
-    prisma.pharmacyProduct.create({
-      data: {
-        pharmacyId: pharmacies[0].id,
-        name: 'Ibuprofeno 400mg',
-        brand: 'MK',
-        category: 'Analgesicos',
-        price: 8.0,
-        stock: 120,
-      },
-    }),
-    prisma.pharmacyProduct.create({
-      data: {
-        pharmacyId: pharmacies[1].id,
-        name: 'Losartán 50mg',
-        brand: 'La Santé',
-        category: 'Cardiovascular',
-        price: 15.0,
-        stock: 45,
-      },
-    }),
+    (async () => {
+      const existing = await prisma.pharmacyProduct.findFirst({
+        where: { pharmacyId: pharmacies[0].id, name: 'Amoxicilina 500mg' },
+      });
+      if (existing) return existing;
+      return prisma.pharmacyProduct.create({
+        data: {
+          pharmacyId: pharmacies[0].id,
+          name: 'Amoxicilina 500mg',
+          brand: 'Genfar',
+          category: 'Antibióticos',
+          price: 12.5,
+          stock: 80,
+        },
+      });
+    })(),
+    (async () => {
+      const existing = await prisma.pharmacyProduct.findFirst({
+        where: { pharmacyId: pharmacies[0].id, name: 'Ibuprofeno 400mg' },
+      });
+      if (existing) return existing;
+      return prisma.pharmacyProduct.create({
+        data: {
+          pharmacyId: pharmacies[0].id,
+          name: 'Ibuprofeno 400mg',
+          brand: 'MK',
+          category: 'Analgesicos',
+          price: 8.0,
+          stock: 120,
+        },
+      });
+    })(),
+    (async () => {
+      const existing = await prisma.pharmacyProduct.findFirst({
+        where: { pharmacyId: pharmacies[1].id, name: 'Losartán 50mg' },
+      });
+      if (existing) return existing;
+      return prisma.pharmacyProduct.create({
+        data: {
+          pharmacyId: pharmacies[1].id,
+          name: 'Losartán 50mg',
+          brand: 'La Santé',
+          category: 'Cardiovascular',
+          price: 15.0,
+          stock: 45,
+        },
+      });
+    })(),
   ]);
 
-  await prisma.pharmacyOrder.createMany({
-    data: [
-      {
-        pharmacyId: pharmacies[0].id,
-        productId: products[0].id,
-        productName: products[0].name,
-        quantity: 2,
-        total: 25,
-        status: PharmacyOrderStatus.COMPLETED,
-      },
-      {
-        pharmacyId: pharmacies[0].id,
-        productId: products[1].id,
-        productName: products[1].name,
-        quantity: 1,
-        total: 8,
-        status: PharmacyOrderStatus.PENDING,
-      },
-    ],
+  const orderCount = await prisma.pharmacyOrder.count({
+    where: { pharmacyId: pharmacies[0].id },
   });
+  if (orderCount === 0) {
+    await prisma.pharmacyOrder.createMany({
+      data: [
+        {
+          pharmacyId: pharmacies[0].id,
+          productId: products[0].id,
+          productName: products[0].name,
+          quantity: 2,
+          total: 25,
+          status: PharmacyOrderStatus.COMPLETED,
+        },
+        {
+          pharmacyId: pharmacies[0].id,
+          productId: products[1].id,
+          productName: products[1].name,
+          quantity: 1,
+          total: 8,
+          status: PharmacyOrderStatus.PENDING,
+        },
+      ],
+    });
+  }
 
-  const patient = await prisma.user.create({
-    data: {
-      email: 'juan@patient.com',
-      password,
+  const patient = await ensureDemoUser(
+    'juan@patient.com',
+    {
       name: 'Juan Pérez',
       role: UserRole.PATIENT,
       phone: '+58 412-555-0198',
       profilePic: 'https://i.pravatar.cc/150?img=1',
     },
-  });
+    password,
+  );
 
-  await prisma.patientProfile.create({
-    data: {
+  await prisma.patientProfile.upsert({
+    where: { userId: patient.id },
+    create: {
       userId: patient.id,
       fullName: 'Juan Pérez',
       email: patient.email,
@@ -285,10 +481,12 @@ async function seed() {
       insuranceProvider: 'Seguros Mercantil',
       policyNumber: 'MC-2024-889900',
     },
+    update: {},
   });
 
-  const history = await prisma.medicalHistory.create({
-    data: {
+  const history = await prisma.medicalHistory.upsert({
+    where: { patientId: patient.id },
+    create: {
       patientId: patient.id,
       bloodType: 'O+',
       allergies: 'Penicilina',
@@ -298,129 +496,155 @@ async function seed() {
       weightKg: '78',
       heightCm: '176',
     },
+    update: {},
   });
 
-  await prisma.medicalHistoryEntry.create({
-    data: {
-      medicalHistoryId: history.id,
-      date: new Date('2025-11-10'),
-      title: 'Control de presión',
-      description: 'Presión arterial dentro de rango normal.',
-      diagnosis: 'Hipertensión controlada',
-      treatment: 'Continuar Losartán 50mg',
-    },
+  const entryCount = await prisma.medicalHistoryEntry.count({
+    where: { medicalHistoryId: history.id },
   });
+  if (entryCount === 0) {
+    await prisma.medicalHistoryEntry.create({
+      data: {
+        medicalHistoryId: history.id,
+        date: new Date('2025-11-10'),
+        title: 'Control de presión',
+        description: 'Presión arterial dentro de rango normal.',
+        diagnosis: 'Hipertensión controlada',
+        treatment: 'Continuar Losartán 50mg',
+      },
+    });
+  }
 
-  const doctor = await prisma.user.create({
-    data: {
-      email: 'maria@doctor.com',
-      password,
+  const doctor = await ensureDemoUser(
+    'maria@doctor.com',
+    {
       name: 'Dra. María Gómez',
       role: UserRole.DOCTOR,
       phone: '+58 414-555-0200',
       profilePic: 'https://i.pravatar.cc/150?img=2',
     },
+    password,
+  );
+
+  let doctorProfile = await prisma.doctorProfile.findUnique({
+    where: { userId: doctor.id },
   });
+  if (!doctorProfile) {
+    doctorProfile = await prisma.doctorProfile.create({
+      data: {
+        userId: doctor.id,
+        documentId: 'V-87654321',
+        licenseNumber: 'MED-45821',
+        bio: 'Cardióloga con 12 años de experiencia',
+        rating: 4.9,
+        consultationPriceOnline: 25,
+        consultationPricePresential: 45,
+        specialties: {
+          create: [
+            { specialtyId: specialties[0].id },
+            { specialtyId: specialties[1].id },
+          ],
+        },
+        facilities: {
+          create: [{ facilityId: facilities[0].id }, { facilityId: facilities[1].id }],
+        },
+        specialtyDurations: {
+          create: [
+            { specialtyId: specialties[0].id, durationMinutes: 60 },
+            { specialtyId: specialties[1].id, durationMinutes: 30 },
+          ],
+        },
+      },
+    });
+  }
 
-  const doctorProfile = await prisma.doctorProfile.create({
-    data: {
-      userId: doctor.id,
-      documentId: 'V-87654321',
-      licenseNumber: 'MED-45821',
-      bio: 'Cardióloga con 12 años de experiencia',
-      rating: 4.9,
-      consultationPriceOnline: 25,
-      consultationPricePresential: 45,
-      specialties: {
-        create: [
-          { specialtyId: specialties[0].id },
-          { specialtyId: specialties[1].id },
-        ],
-      },
-      facilities: {
-        create: [{ facilityId: facilities[0].id }, { facilityId: facilities[1].id }],
-      },
-      specialtyDurations: {
-        create: [
-          { specialtyId: specialties[0].id, durationMinutes: 60 },
-          { specialtyId: specialties[1].id, durationMinutes: 30 },
-        ],
-      },
-    },
+  const scheduleCount = await prisma.doctorWorkSchedule.count({
+    where: { doctorId: doctor.id },
   });
+  if (scheduleCount === 0) {
+    const weekdays = [
+      DayOfWeek.MONDAY,
+      DayOfWeek.TUESDAY,
+      DayOfWeek.WEDNESDAY,
+      DayOfWeek.THURSDAY,
+      DayOfWeek.FRIDAY,
+      DayOfWeek.SATURDAY,
+    ];
+    await prisma.doctorWorkSchedule.createMany({
+      data: weekdays.flatMap((day) => [
+        {
+          doctorId: doctor.id,
+          facilityId: facilities[0].id,
+          dayOfWeek: day,
+          startTime: '08:00',
+          endTime: '12:00',
+        },
+        {
+          doctorId: doctor.id,
+          facilityId: facilities[1].id,
+          dayOfWeek: day,
+          startTime: '14:00',
+          endTime: '18:00',
+        },
+      ]),
+    });
+  }
 
-  const weekdays = [
-    DayOfWeek.MONDAY,
-    DayOfWeek.TUESDAY,
-    DayOfWeek.WEDNESDAY,
-    DayOfWeek.THURSDAY,
-    DayOfWeek.FRIDAY,
-    DayOfWeek.SATURDAY,
-  ];
+  const appointmentCount = await prisma.appointment.count({
+    where: { patientId: patient.id, doctorId: doctor.id },
+  });
+  if (appointmentCount === 0) {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(10, 30, 0, 0);
 
-  await prisma.doctorWorkSchedule.createMany({
-    data: weekdays.flatMap((day) => [
-      {
+    await prisma.appointment.createMany({
+      data: [
+        {
+          patientId: patient.id,
+          doctorId: doctor.id,
+          facilityId: facilities[1].id,
+          specialtyId: specialties[0].id,
+          dateTime: tomorrow,
+          status: AppointmentStatus.PENDING,
+          type: AppointmentType.PRESENTIAL,
+          reason: 'Control cardiológico',
+          price: 45,
+          durationMinutes: 60,
+        },
+        {
+          patientId: patient.id,
+          doctorId: doctor.id,
+          specialtyId: specialties[0].id,
+          dateTime: new Date(tomorrow.getTime() + 2 * 60 * 60 * 1000),
+          status: AppointmentStatus.CONFIRMED,
+          type: AppointmentType.ONLINE,
+          reason: 'Seguimiento telemedicina',
+          price: 25,
+          durationMinutes: 60,
+        },
+      ],
+    });
+  }
+
+  const chatExists = await prisma.chatConversation.findFirst({
+    where: { doctorId: doctor.id, patientId: patient.id },
+  });
+  if (!chatExists) {
+    await prisma.chatConversation.create({
+      data: {
         doctorId: doctor.id,
-        facilityId: facilities[0].id,
-        dayOfWeek: day,
-        startTime: '08:00',
-        endTime: '12:00',
-      },
-      {
-        doctorId: doctor.id,
-        facilityId: facilities[1].id,
-        dayOfWeek: day,
-        startTime: '14:00',
-        endTime: '18:00',
-      },
-    ]),
-  });
-
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  tomorrow.setHours(10, 30, 0, 0);
-
-  await prisma.appointment.createMany({
-    data: [
-      {
         patientId: patient.id,
-        doctorId: doctor.id,
-        facilityId: facilities[1].id,
-        specialtyId: specialties[0].id,
-        dateTime: tomorrow,
-        status: AppointmentStatus.PENDING,
-        type: AppointmentType.PRESENTIAL,
-        reason: 'Control cardiológico',
-        price: 45,
-        durationMinutes: 60,
+        lastMessage: 'Buenos días doctor, tengo una consulta sobre mi medicación.',
+        lastMessageAt: new Date(),
+        lastChatMessage: 'Buenos días doctor, tengo una consulta sobre mi medicación.',
+        lastChatMessageAt: new Date(),
       },
-      {
-        patientId: patient.id,
-        doctorId: doctor.id,
-        specialtyId: specialties[0].id,
-        dateTime: new Date(tomorrow.getTime() + 2 * 60 * 60 * 1000),
-        status: AppointmentStatus.CONFIRMED,
-        type: AppointmentType.ONLINE,
-        reason: 'Seguimiento telemedicina',
-        price: 25,
-        durationMinutes: 60,
-      },
-    ],
-  });
-
-  await prisma.chatConversation.create({
-    data: {
-      doctorId: doctor.id,
-      patientId: patient.id,
-      lastMessage: 'Buenos días doctor, tengo una consulta sobre mi medicación.',
-      lastMessageAt: new Date(),
-      lastChatMessage: 'Buenos días doctor, tengo una consulta sobre mi medicación.',
-      lastChatMessageAt: new Date(),
-    },
-  });
+    });
+  }
 
   console.log('Seed completado (PostgreSQL):');
+  console.log(`  Modo: ${FRESH_SEED ? 'RESET TOTAL (--fresh)' : 'seguro (datos existentes conservados)'}`);
   console.log(`  Super Admin:    ${superAdmin.email} / password`);
   console.log(`  Admin Clínica:  ${clinicAdmin.email} / password`);
   console.log(`  Admin Farmacia: ${pharmacyAdmin.email} / password`);

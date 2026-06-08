@@ -10,6 +10,7 @@ import '../debug/realtime_debug_log.dart';
 import '../debug/call_debug_log.dart';
 import '../navigation/app_routes.dart';
 import '../network/gateway_health.dart';
+import '../connectivity/service_connectivity.dart';
 import '../../features/chat/data/chat_socket_service.dart';
 import '../../features/chat/presentation/widgets/incoming_call_dialog.dart';
 import 'active_call_service.dart';
@@ -64,16 +65,34 @@ class AppRealtime {
     _attachIncomingCallListener();
     _attachConnectionGuard();
 
-    if (chatSocket.isConnected || chatSocket.isConnecting) return;
+    if (chatSocket.isConnected) return;
+    if (chatSocket.isConnecting) {
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+      if (chatSocket.isConnected) return;
+      chatSocket.resetStalledConnection();
+    }
 
-    ApiConfig.logResolvedEndpoints();
-    final reachable = await isGatewayReachable();
-    if (!reachable) {
-      final msg =
-          'Gateway no responde en ${ApiConfig.socketUrl}/health — cd realtime-gateway && pnpm run dev';
-      RealtimeDebugLog.instance.log('AppRealtime', msg, level: RealtimeDebugLevel.error);
-      if (kDebugMode) debugPrint('[AppRealtime] $msg');
-      return;
+    // En Dev Tunnel el socket va al mismo origen :8088; conectar directo (como flutter run).
+    if (!ApiConfig.openedViaDevTunnel) {
+      var reachable = await isGatewayReachable(
+        timeout: const Duration(seconds: 3),
+      );
+      if (!reachable) {
+        ServiceConnectivity.instance.invalidateCache();
+        for (var i = 0; i < 2 && !reachable; i++) {
+          await Future<void>.delayed(const Duration(milliseconds: 250));
+          reachable = await isGatewayReachable(
+            timeout: const Duration(seconds: 2),
+          );
+        }
+      }
+      if (!reachable) {
+        final msg =
+            'Gateway no responde en ${ApiConfig.gatewayHealthUrl} — cd realtime-gateway && pnpm run dev';
+        RealtimeDebugLog.instance.log('AppRealtime', msg, level: RealtimeDebugLevel.error);
+        if (kDebugMode) debugPrint('[AppRealtime] $msg');
+        return;
+      }
     }
 
     RealtimeDebugLog.instance.log('AppRealtime', 'Gateway OK, iniciando socket…');
@@ -89,7 +108,7 @@ class AppRealtime {
 
   /// Conecta al gateway Socket.IO (puerto 3001) y espera hasta [timeout].
   static Future<bool> ensureConnected({
-    Duration timeout = const Duration(seconds: 15),
+    Duration timeout = const Duration(seconds: 6),
   }) async {
     if (!AppSession.isLoggedIn) return false;
     await connectIfNeeded();
@@ -251,12 +270,16 @@ class AppRealtime {
     final nav = navigatorKey?.currentState;
     if (nav == null) {
       developer.log('sin navigator, llamada en cola', name: _logName);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _tryShowPendingIncomingCall();
+      });
       return;
     }
 
-    final ctx = nav.overlay?.context ?? navigatorKey?.currentContext;
+    // Preferir contexto del Navigator raíz (más fiable en iOS que overlay?.context).
+    final ctx = navigatorKey?.currentContext;
     if (ctx == null || !ctx.mounted) {
-      developer.log('sin contexto overlay, llamada en cola', name: _logName);
+      developer.log('sin contexto, llamada en cola', name: _logName);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _tryShowPendingIncomingCall();
       });
@@ -290,15 +313,14 @@ class AppRealtime {
       },
       onAccept: () {
         chatSocket.joinCallRoom(event.conversationId);
-        chatSocket.acceptCall(event.conversationId);
         _showingIncomingForConversationId = null;
         Navigator.of(ctx, rootNavigator: true).pop();
+        // call:accept se envía cuando WebRTC está listo (evita perder call:offer).
         navigateToVideoCall(
           conversationId: event.conversationId,
           peerName: event.callerName,
           callType: event.callType,
           isOutgoing: false,
-          acceptAlreadySent: true,
         );
       },
     );

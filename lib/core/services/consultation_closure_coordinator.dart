@@ -1,45 +1,26 @@
 import 'package:flutter/material.dart';
 
+import '../../features/appointments/data/appointment_api_service.dart';
 import '../../features/appointments/domain/models/appointment.dart';
 import '../../features/appointments/presentation/pages/consultation_closure_page.dart';
 import '../../main.dart';
 import '../auth/app_session.dart';
 import '../../features/auth/domain/models/role.dart';
 
-/// Abre el formulario de cierre cuando una cita terminó y falta el informe.
+/// Navega al formulario de cierre cuando el médico lo elige (no se abre solo).
 class ConsultationClosureCoordinator {
-  static String? _pendingShownForAppointmentId;
+  static void resetSession() {}
 
-  static void resetSession() {
-    _pendingShownForAppointmentId = null;
+  static List<Appointment> listPending(List<Appointment> appointments) {
+    if (AppSession.activeRole != Role.doctor) return const [];
+    final pending = appointments.where((a) => a.needsClosure).toList()
+      ..sort((a, b) => a.dateTime.compareTo(b.dateTime));
+    return pending;
   }
 
   static Appointment? findNextPending(List<Appointment> appointments) {
-    if (AppSession.activeRole != Role.doctor) return null;
-    final pending = appointments.where((a) => a.needsClosure).toList()
-      ..sort((a, b) => a.dateTime.compareTo(b.dateTime));
+    final pending = listPending(appointments);
     return pending.isEmpty ? null : pending.first;
-  }
-
-  static Future<void> openIfNeeded(
-    List<Appointment> appointments, {
-    bool force = false,
-  }) async {
-    final appt = findNextPending(appointments);
-    if (appt == null) return;
-    if (!force && _pendingShownForAppointmentId == appt.id) return;
-
-    final ctx = appNavigatorKey.currentContext;
-    if (ctx == null || !ctx.mounted) return;
-
-    _pendingShownForAppointmentId = appt.id;
-    await Navigator.of(ctx).push<void>(
-      MaterialPageRoute(
-        fullscreenDialog: true,
-        builder: (_) => ConsultationClosurePage(appointment: appt),
-      ),
-    );
-    _pendingShownForAppointmentId = null;
   }
 
   static Future<bool?> openFor(Appointment appointment) async {
@@ -51,5 +32,19 @@ class ConsultationClosureCoordinator {
         builder: (_) => ConsultationClosurePage(appointment: appointment),
       ),
     );
+  }
+
+  static Future<bool?> openForId(String appointmentId) async {
+    try {
+      final list = await AppointmentApiService().getDoctorAppointments();
+      final appt = list.cast<Appointment?>().firstWhere(
+            (a) => a?.id == appointmentId,
+            orElse: () => null,
+          );
+      if (appt == null) return false;
+      return openFor(appt);
+    } catch (_) {
+      return false;
+    }
   }
 }

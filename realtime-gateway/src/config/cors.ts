@@ -1,3 +1,4 @@
+// Mantener alineado con backend/src/config/cors.ts (ver docs/COMMUNICATION.md).
 import cors, { CorsOptions } from 'cors';
 
 /** Cursor / VS Code Dev Tunnels, GitHub Codespaces, localhost. */

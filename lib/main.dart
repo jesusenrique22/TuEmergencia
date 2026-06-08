@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'features/database/data/mongo_service.dart';
 import 'core/auth/app_session.dart';
@@ -9,9 +12,21 @@ import 'core/theme/app_theme.dart';
 import 'core/navigation/app_navigation.dart';
 import 'core/navigation/app_routes.dart';
 import 'core/config/api_config.dart';
+import 'core/di/service_locator.dart';
 import 'core/services/app_realtime.dart';
+import 'core/connectivity/service_connectivity.dart';
 
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
+
+/// Calienta el proxy/API en segundo plano (no bloquea la UI).
+void _warmDevStackInBackground() {
+  if (!kIsWeb || !ApiConfig.openedViaDevTunnel) return;
+  unawaited(
+    ServiceConnectivity.instance.isApiReachable(
+      timeout: const Duration(seconds: 2),
+    ),
+  );
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,18 +36,21 @@ Future<void> main() async {
     // Ignorar errores de carga en web u otros entornos donde .env no esté disponible
     debugPrint('Warning: No se pudo cargar .env - $e');
   }
-  if (!kIsWeb && dotenv.env['MONGODB_URI']?.isNotEmpty == true) {
+  setupServiceLocator();
+  _warmDevStackInBackground();
+  if (!kIsWeb && dotenv.isInitialized && dotenv.env['MONGODB_URI']?.isNotEmpty == true) {
     try {
       await MongoService().init();
       debugPrint('MongoDB conectado');
     } catch (e) {
-      debugPrint('MongoDB no disponible: $e');
+      // Backend principal usa PostgreSQL; Mongo solo para migración legacy.
+      debugPrint('MongoDB no disponible (opcional): $e');
     }
   }
   final hasSession = await AppSession.restore();
   AppSession.onSessionEnded = AppRealtime.disconnect;
   if (hasSession && AppSession.currentUser?.role == Role.patient) {
-    await PatientProfileRepository.refreshFromApi();
+    unawaited(PatientProfileRepository.refreshFromApi());
   }
   AppRealtime.bindNavigator(appNavigatorKey);
   if (kIsWeb) {
@@ -46,28 +64,60 @@ Future<void> main() async {
   runApp(VitaOSApp(hasSession: hasSession));
 }
 
-class VitaOSApp extends StatelessWidget {
+class VitaOSApp extends StatefulWidget {
   final bool hasSession;
 
   const VitaOSApp({super.key, this.hasSession = false});
 
   @override
+  State<VitaOSApp> createState() => _VitaOSAppState();
+}
+
+class _VitaOSAppState extends State<VitaOSApp> {
+  String get _bootRoute {
+    if (widget.hasSession && AppSession.currentUser != null) {
+      return AppNavigation.homeRouteForRole(AppSession.currentUser!.role);
+    }
+    return AppRoutes.login;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final initialRoute = hasSession && AppSession.currentUser != null
-        ? AppNavigation.homeRouteForRole(AppSession.currentUser!.role)
-        : AppRoutes.login;
+    final bootRoute = _bootRoute;
+    final bootBuilder =
+        AppRoutes.routes[bootRoute] ?? AppRoutes.routes[AppRoutes.login]!;
 
     return MaterialApp(
       navigatorKey: appNavigatorKey,
-      title: 'VITA OS',
+      title: 'Smart Medic',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
-      initialRoute: initialRoute,
+      locale: const Locale('es'),
+      supportedLocales: const [
+        Locale('es'),
+        Locale('en'),
+      ],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      onGenerateInitialRoutes: (_) => [
+        MaterialPageRoute<void>(
+          settings: RouteSettings(name: bootRoute),
+          builder: bootBuilder,
+        ),
+      ],
       routes: AppRoutes.routes,
-      onUnknownRoute: (_) => MaterialPageRoute(
-        builder: AppRoutes
-            .routes[AppNavigation.homeRouteForRole(AppSession.activeRole)]!,
-      ),
+      onUnknownRoute: (_) {
+        final fallback = AppNavigation.homeRouteForRole(AppSession.activeRole);
+        final builder =
+            AppRoutes.routes[fallback] ?? AppRoutes.routes[AppRoutes.login]!;
+        return MaterialPageRoute(
+          settings: RouteSettings(name: fallback),
+          builder: builder,
+        );
+      },
     );
   }
 }

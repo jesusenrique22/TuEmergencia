@@ -109,7 +109,11 @@ export async function assignDoctorToFacility(doctorUserId: string, facilityId: s
   return { user: toApiDoc(omitPassword(user)), profile: mapDoctorProfile(populated) };
 }
 
-export async function unassignDoctorFromFacility(doctorUserId: string, facilityId: string) {
+export async function removeDoctorFromFacility(
+  doctorUserId: string,
+  facilityId: string,
+  options?: { deleteIfLastFacility?: boolean },
+) {
   const profile = await prisma.doctorProfile.findUnique({
     where: { userId: doctorUserId },
     include: { facilities: true },
@@ -121,9 +125,32 @@ export async function unassignDoctorFromFacility(doctorUserId: string, facilityI
   }
 
   if (profile.facilities.length <= 1) {
-    throw new Error(
-      'No puedes desvincular al único centro del médico. Debe pertenecer al menos a una clínica.',
-    );
+    if (!options?.deleteIfLastFacility) {
+      throw new Error(
+        'Este médico solo pertenece a tu clínica. Confirma «Eliminar cuenta» para quitarlo del sistema.',
+      );
+    }
+
+    const upcomingAppointments = await prisma.appointment.count({
+      where: {
+        doctorId: doctorUserId,
+        status: { notIn: ['CANCELLED', 'COMPLETED'] },
+        dateTime: { gte: new Date() },
+      },
+    });
+    if (upcomingAppointments > 0) {
+      throw new Error('No se puede eliminar: el médico tiene citas futuras pendientes');
+    }
+
+    await prisma.$transaction([
+      prisma.doctorWorkSchedule.deleteMany({ where: { doctorId: doctorUserId, facilityId } }),
+      prisma.clinicInvitation.deleteMany({
+        where: { doctorId: doctorUserId, facilityId },
+      }),
+      prisma.user.delete({ where: { id: doctorUserId } }),
+    ]);
+
+    return { action: 'deleted' as const, doctorUserId };
   }
 
   await prisma.$transaction([
@@ -140,5 +167,16 @@ export async function unassignDoctorFromFacility(doctorUserId: string, facilityI
     include: doctorProfileInclude,
   });
 
-  return { profile: mapDoctorProfile(populated) };
+  return { action: 'unassigned' as const, profile: mapDoctorProfile(populated) };
+}
+
+/** @deprecated Usa removeDoctorFromFacility */
+export async function unassignDoctorFromFacility(doctorUserId: string, facilityId: string) {
+  const result = await removeDoctorFromFacility(doctorUserId, facilityId);
+  if (result.action === 'deleted') {
+    throw new Error(
+      'Este médico solo pertenece a tu clínica. Confirma «Eliminar cuenta» para quitarlo del sistema.',
+    );
+  }
+  return { profile: result.profile };
 }
