@@ -8,6 +8,7 @@ import 'features/database/data/mongo_service.dart';
 import 'core/auth/app_session.dart';
 import 'features/auth/domain/models/role.dart';
 import 'features/patient_profile/data/patient_profile_repository.dart';
+import 'core/branding/app_branding.dart';
 import 'core/theme/app_theme.dart';
 import 'core/navigation/app_navigation.dart';
 import 'core/navigation/app_routes.dart';
@@ -59,19 +60,19 @@ Future<void> main() async {
   if (kDebugMode) {
     ApiConfig.logResolvedEndpoints();
   }
-  runApp(VitaOSApp(hasSession: hasSession));
+  runApp(TuEmergenciaApp(hasSession: hasSession));
 }
 
-class VitaOSApp extends StatefulWidget {
+class TuEmergenciaApp extends StatefulWidget {
   final bool hasSession;
 
-  const VitaOSApp({super.key, this.hasSession = false});
+  const TuEmergenciaApp({super.key, this.hasSession = false});
 
   @override
-  State<VitaOSApp> createState() => _VitaOSAppState();
+  State<TuEmergenciaApp> createState() => _TuEmergenciaAppState();
 }
 
-class _VitaOSAppState extends State<VitaOSApp> {
+class _TuEmergenciaAppState extends State<TuEmergenciaApp> {
   String get _bootRoute {
     if (widget.hasSession && AppSession.currentUser != null) {
       return AppNavigation.homeRouteForRole(AppSession.currentUser!.role);
@@ -87,7 +88,7 @@ class _VitaOSAppState extends State<VitaOSApp> {
 
     return MaterialApp(
       navigatorKey: appNavigatorKey,
-      title: 'Smart Medic',
+      title: AppBranding.appName,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       locale: const Locale('es'),

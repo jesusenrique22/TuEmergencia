@@ -60,7 +60,7 @@ class ConsultationReportPdfService {
             ),
           pw.Spacer(),
           pw.Text(
-            'Documento generado desde Smart Medic. No sustituye prescripción física cuando la ley lo exija.',
+            'Documento generado desde TuEmergencia. No sustituye prescripción física cuando la ley lo exija.',
             style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
           ),
         ],

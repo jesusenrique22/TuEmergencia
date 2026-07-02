@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/branding/app_branding.dart';
 import '../../core/debug/gateway_debug_page.dart';
 import '../../features/pages.dart';
 import '../../features/auth/domain/models/role.dart';
@@ -576,7 +577,7 @@ class AppRoutes {
       case healthServices:
         return 'Salud';
       default:
-        return destinationFor(route)?.label ?? 'Smart Medic';
+        return destinationFor(route)?.label ?? AppBranding.appName;
     }
   }
 

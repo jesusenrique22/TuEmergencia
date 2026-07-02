@@ -1,6 +1,6 @@
 {
-    "name": "Smart Medic",
-    "short_name": "Smart Medic",
+    "name": "TuEmergencia",
+    "short_name": "TuEmergencia",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#000000",

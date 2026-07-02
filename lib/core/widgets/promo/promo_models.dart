@@ -313,7 +313,7 @@ class PromoMockData {
       id: 'lg1',
       title: 'Tu salud, simplificada',
       subtitle: 'Citas, emergencias y resultados en un solo lugar',
-      badge: 'Smart Medic',
+      badge: 'TuEmergencia',
       ctaLabel: '',
       gradient: [Color(0xFF064E3B), Color(0xFF10B981)],
       icon: Icons.favorite_rounded,

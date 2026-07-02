@@ -67,13 +67,13 @@ class WebRtcCallController {
   String get localVideoIssueHint {
     if (hasLocalVideoTrack && localVideoActive) return '';
     if (!_cameraPermissionGranted) {
-      return 'Permite la cámara en Ajustes → Smartmedic → Cámara.';
+      return 'Permite la cámara en Ajustes → TuEmergencia → Cámara.';
     }
     if (!_videoInputAvailable || isIosSimulator) {
       return 'Permiso OK. Simulador: menú I/O (o Features) → Camera → elige la cámara del Mac. '
           'Cuelga y vuelve a llamar.';
     }
-    return 'Permiso OK, pero la cámara no respondió. Cierra Smartmedic por completo '
+    return 'Permiso OK, pero la cámara no respondió. Cierra TuEmergencia por completo '
         '(apps recientes) y vuelve a llamar.';
   }
 

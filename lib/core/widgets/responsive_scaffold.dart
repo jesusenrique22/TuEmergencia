@@ -316,7 +316,7 @@ class _SidebarBrand extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'Smart Medic',
+                  AppBranding.appName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(

@@ -8,15 +8,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:smartmedic/core/auth/app_session.dart';
-import 'package:smartmedic/core/navigation/app_navigation.dart';
-import 'package:smartmedic/core/navigation/app_routes.dart';
-import 'package:smartmedic/features/auth/domain/models/role.dart';
-import 'package:smartmedic/main.dart';
+import 'package:tuemergencia/core/auth/app_session.dart';
+import 'package:tuemergencia/core/navigation/app_navigation.dart';
+import 'package:tuemergencia/core/navigation/app_routes.dart';
+import 'package:tuemergencia/features/auth/domain/models/role.dart';
+import 'package:tuemergencia/main.dart';
 
 void main() {
   testWidgets('App starts smoke test', (WidgetTester tester) async {
-    await tester.pumpWidget(const VitaOSApp());
+    await tester.pumpWidget(const TuEmergenciaApp());
     await tester.pumpAndSettle();
 
     expect(find.text('Hola, Juan'), findsOneWidget);

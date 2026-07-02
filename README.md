@@ -1,6 +1,6 @@
-# Smart Medic
+# TuEmergencia — Flutter app (iOS TestFlight / web) + backend en Render.
 
-App Flutter + backend REST (`backend/`) + gateway WebSocket (`realtime-gateway/`).
+App multiplataforma. Backend y gateway en Render; PostgreSQL en Neon.
 
 ## Desarrollo local
 

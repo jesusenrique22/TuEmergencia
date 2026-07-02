@@ -14,7 +14,7 @@ class MapConfig {
   static const cartoLightTileUrl =
       'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png';
 
-  static const userAgentPackageName = 'com.smartmedic.app';
+  static const userAgentPackageName = 'com.tuemergencia.app';
 
   /// Centro por defecto (Caracas) cuando no hay GPS ni POIs.
   static const defaultCenter = GeoPoint(latitude: 10.4806, longitude: -66.9036);

@@ -49,7 +49,7 @@ class _GatewayDebugPageState extends State<GatewayDebugPage> {
 
   Future<void> _copyReport() async {
     final buffer = StringBuffer()
-      ..writeln('=== Smart Medic — Gateway debug ===')
+      ..writeln('=== TuEmergencia — Gateway debug ===')
       ..writeln('Generado: ${DateTime.now().toIso8601String()}')
       ..writeln()
       ..writeln('--- Diagnóstico ---');
