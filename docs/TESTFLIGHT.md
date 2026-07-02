@@ -8,21 +8,17 @@
   - `https://backend-pl89.onrender.com`
   - `https://gateway-i9yu.onrender.com`
 
-## 1. Variables de entorno (obligatorio)
+## 1. Variables de entorno
 
-En el iPhone **no** funciona `127.0.0.1`. Copia:
-
-```bash
-cp .env.ios.production.example .env.ios.production.local
-```
-
-Contenido:
+El archivo **`.env`** en la raíz del repo ya incluye las URLs de Render (está en git):
 
 ```env
 API_BASE_URL=https://backend-pl89.onrender.com
 SOCKET_URL=https://gateway-i9yu.onrender.com
 ENABLE_DEV_TOOLS=false
 ```
+
+Para dev local sin tocar `.env`, crea **`.env.local`** (ignorado por git) — ver `.env.example`.
 
 ## 2. Compilar
 

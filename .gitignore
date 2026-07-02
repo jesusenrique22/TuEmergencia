@@ -72,16 +72,12 @@ config/local-paths.env
 android/local.properties
 !android/local.properties.example
 
-# Environment / secrets (never commit real values)
-.env
-.env.*
-!**/.env.example
-!.env.production.example
-!.env.production.local.example
-!.env.ios.production.example
-!.env.ios.production.local.example
+# Secretos locales — NO subir (backend/gateway tienen DATABASE_URL, JWT, etc.)
+backend/.env
+realtime-gateway/.env
 .env.local
 .env.*.local
+config/local-paths.env
 
 # Signing keys (never commit)
 key.properties
