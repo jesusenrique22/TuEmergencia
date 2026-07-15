@@ -7,6 +7,8 @@ import { jwtSecret } from '../config/secrets';
 
 const JWT_SECRET = jwtSecret();
 
+import { prisma } from '../lib/prisma';
+
 export interface AuthPayload {
   id: string;
   role: UserRole;
@@ -16,7 +18,7 @@ export interface AuthRequest extends Request {
   user?: AuthPayload;
 }
 
-export function authenticate(req: AuthRequest, res: Response, next: NextFunction) {
+export async function authenticate(req: AuthRequest, res: Response, next: NextFunction) {
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Token requerido' });
@@ -24,7 +26,19 @@ export function authenticate(req: AuthRequest, res: Response, next: NextFunction
 
   try {
     const token = header.slice(7);
-    req.user = jwt.verify(token, JWT_SECRET) as AuthPayload;
+    const decoded = jwt.verify(token, JWT_SECRET) as AuthPayload;
+
+    // Verificar si el usuario existe en base de datos
+    const userExists = await prisma.user.findUnique({
+      where: { id: decoded.id },
+      select: { id: true },
+    });
+
+    if (!userExists) {
+      return res.status(401).json({ error: 'Sesión expirada o usuario no encontrado. Por favor inicia sesión de nuevo.' });
+    }
+
+    req.user = decoded;
     next();
   } catch {
     return res.status(401).json({ error: 'Token inválido' });

@@ -67,6 +67,14 @@ const _allCategories = [
     emoji: '💊',
   ),
   _ServiceCategory(
+    label: 'Explicar receta (IA)',
+    icon: Icons.auto_awesome_rounded,
+    gradient: [Color(0xFF2563EB), Color(0xFF7C3AED)],
+    route: AppRoutes.explainPrescription,
+    description: 'Analiza dosis y efectos con IA',
+    emoji: '✨',
+  ),
+  _ServiceCategory(
     label: 'Alquiler equipos',
     icon: Icons.personal_injury_rounded,
     gradient: [Color(0xFFF97316), Color(0xFFFBBF24)],

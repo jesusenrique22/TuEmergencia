@@ -860,6 +860,14 @@ class WebRtcCallController {
     }
   }
 
+  Future<void> switchCamera() async {
+    final videoTracks = _localStream?.getVideoTracks() ?? <MediaStreamTrack>[];
+    if (videoTracks.isNotEmpty) {
+      await Helper.switchCamera(videoTracks.first);
+      _notifyVideoLayout();
+    }
+  }
+
   bool get hasVideo => _videoEnabled;
 
   void hangUp() {

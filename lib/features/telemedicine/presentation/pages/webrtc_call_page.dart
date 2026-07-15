@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:developer' as developer;
+import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -23,7 +24,7 @@ class WebRtcCallPage extends StatefulWidget {
   State<WebRtcCallPage> createState() => _WebRtcCallPageState();
 }
 
-class _WebRtcCallPageState extends State<WebRtcCallPage> {
+class _WebRtcCallPageState extends State<WebRtcCallPage> with SingleTickerProviderStateMixin {
   static const _logName = 'WebRtcCallPage';
 
   WebRtcCallController? _call;
@@ -39,6 +40,10 @@ class _WebRtcCallPageState extends State<WebRtcCallPage> {
   bool _initializing = true;
   String? _error;
   String _status = 'Conectando…';
+  
+  double _pipTop = 100.0;
+  double _pipRight = 16.0;
+  AnimationController? _pulseController;
 
   /// Cacheados en [initState] — no usar [BuildContext] en [dispose].
   late final String _conversationId;
@@ -61,6 +66,10 @@ class _WebRtcCallPageState extends State<WebRtcCallPage> {
       'init conv=$_conversationId outgoing=$_isOutgoing video=$_isVideo',
       name: _logName,
     );
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat();
   }
 
   @override
@@ -310,6 +319,7 @@ class _WebRtcCallPageState extends State<WebRtcCallPage> {
   void dispose() {
     developer.log('dispose página conv=$_conversationId parked=$_parked', name: _logName);
     _setupGeneration++;
+    _pulseController?.dispose();
     if (_parked || ActiveCallService.instance.isParked(_conversationId)) {
       super.dispose();
       return;
@@ -419,33 +429,54 @@ class _WebRtcCallPageState extends State<WebRtcCallPage> {
         if (!_isVideo) _hiddenRemoteAudioView(call),
         if (_isVideo)
           Positioned(
-            top: 100,
-            right: 16,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: SizedBox(
-                width: 110,
-                height: 150,
-                child: _cameraOff || !call.hasLocalVideoTrack
-                    ? Container(
-                        color: Colors.grey.shade900,
-                        child: Icon(
-                          _cameraOff ? Icons.videocam_off : Icons.person,
-                          color: Colors.white54,
-                          size: 40,
-                        ),
-                      )
-                    : RTCVideoView(
-                        call.localRenderer,
-                        key: ValueKey('local-${call.localRenderer.textureId}'),
-                        mirror: true,
-                        filterQuality: FilterQuality.medium,
-                        objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-                        placeholderBuilder: (_) => _videoPlaceholder(
-                          icon: Icons.person,
-                          label: 'Cámara local',
-                        ),
-                      ),
+            top: _pipTop,
+            right: _pipRight,
+            child: GestureDetector(
+              onPanUpdate: (details) {
+                setState(() {
+                  _pipTop += details.delta.dy;
+                  _pipRight -= details.delta.dx;
+                });
+              },
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.25), width: 1.5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.4),
+                      blurRadius: 10,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: SizedBox(
+                    width: 110,
+                    height: 150,
+                    child: _cameraOff || !call.hasLocalVideoTrack
+                        ? Container(
+                            color: Colors.grey.shade900,
+                            child: Icon(
+                              _cameraOff ? Icons.videocam_off : Icons.person,
+                              color: Colors.white54,
+                              size: 40,
+                            ),
+                          )
+                        : RTCVideoView(
+                            call.localRenderer,
+                            key: ValueKey('local-${call.localRenderer.textureId}'),
+                            mirror: true,
+                            filterQuality: FilterQuality.medium,
+                            objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+                            placeholderBuilder: (_) => _videoPlaceholder(
+                              icon: Icons.person,
+                              label: 'Cámara local',
+                            ),
+                          ),
+                  ),
+                ),
               ),
             ),
           ),
@@ -473,48 +504,80 @@ class _WebRtcCallPageState extends State<WebRtcCallPage> {
         ),
         Positioned(
           bottom: 40,
-          left: 0,
-          right: 0,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _ctrl(
-                icon: Icons.keyboard_arrow_down_rounded,
-                color: Colors.white24,
-                onTap: _parkAndLeave,
+          left: 16,
+          right: 16,
+          child: SafeArea(
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.45),
+                borderRadius: BorderRadius.circular(32),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.15), width: 1.5),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    blurRadius: 15,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
               ),
-              const SizedBox(width: 20),
-              _ctrl(
-                icon: _muted ? Icons.mic_off : Icons.mic,
-                color: _muted ? Colors.red : Colors.white24,
-                onTap: () {
-                  setState(() => _muted = !_muted);
-                  call.toggleMute(_muted);
-                  ActiveCallService.instance.updateUiState(muted: _muted);
-                },
-              ),
-              const SizedBox(width: 20),
-              _ctrl(
-                icon: Icons.call_end,
-                color: Colors.red,
-                size: 32,
-                onTap: () => unawaited(
-                  _hangUpLocal(navigateBack: true, reason: 'user'),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(32),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _ctrl(
+                        icon: Icons.keyboard_arrow_down_rounded,
+                        color: Colors.white.withValues(alpha: 0.15),
+                        tooltip: 'Minimizar',
+                        onTap: _parkAndLeave,
+                      ),
+                      _ctrl(
+                        icon: _muted ? Icons.mic_off_rounded : Icons.mic_rounded,
+                        color: _muted ? Colors.red : Colors.white.withValues(alpha: 0.15),
+                        tooltip: _muted ? 'Activar micrófono' : 'Silenciar',
+                        onTap: () {
+                          setState(() => _muted = !_muted);
+                          call.toggleMute(_muted);
+                          ActiveCallService.instance.updateUiState(muted: _muted);
+                        },
+                      ),
+                      _ctrl(
+                        icon: Icons.call_end_rounded,
+                        color: Colors.red.shade600,
+                        size: 30,
+                        tooltip: 'Colgar',
+                        onTap: () => unawaited(
+                          _hangUpLocal(navigateBack: true, reason: 'user'),
+                        ),
+                      ),
+                      if (_isVideo) ...[
+                        _ctrl(
+                          icon: _cameraOff ? Icons.videocam_off_rounded : Icons.videocam_rounded,
+                          color: _cameraOff ? Colors.red : Colors.white.withValues(alpha: 0.15),
+                          tooltip: _cameraOff ? 'Activar cámara' : 'Apagar cámara',
+                          onTap: () {
+                            setState(() => _cameraOff = !_cameraOff);
+                            call.toggleCamera(_cameraOff);
+                            ActiveCallService.instance.updateUiState(cameraOff: _cameraOff);
+                          },
+                        ),
+                        _ctrl(
+                          icon: Icons.flip_camera_ios_rounded,
+                          color: Colors.white.withValues(alpha: 0.15),
+                          tooltip: 'Rotar cámara',
+                          onTap: () async {
+                            await call.switchCamera();
+                          },
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ),
-              if (_isVideo) ...[
-                const SizedBox(width: 20),
-                _ctrl(
-                  icon: _cameraOff ? Icons.videocam_off : Icons.videocam,
-                  color: _cameraOff ? Colors.red : Colors.white24,
-                  onTap: () {
-                    setState(() => _cameraOff = !_cameraOff);
-                    call.toggleCamera(_cameraOff);
-                    ActiveCallService.instance.updateUiState(cameraOff: _cameraOff);
-                  },
-                ),
-              ],
-            ],
+            ),
           ),
         ),
       ],
@@ -626,32 +689,90 @@ class _WebRtcCallPageState extends State<WebRtcCallPage> {
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          colors: [Color(0xFF0F172A), Color(0xFF1E40AF)],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF0F172A), Color(0xFF1E293B)],
         ),
       ),
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const CircleAvatar(
-              radius: 56,
-              backgroundColor: Colors.white24,
-              child: Icon(
-                Icons.phone_in_talk_rounded,
-                size: 56,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 20),
+            _buildPulseAvatar(),
+            const SizedBox(height: 32),
             Text(
               _peerName,
               style: const TextStyle(
                 color: Colors.white,
-                fontSize: 24,
-                fontWeight: FontWeight.w800,
+                fontSize: 26,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.5,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _status,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.6),
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPulseAvatar() {
+    if (_pulseController == null) {
+      return const CircleAvatar(
+        radius: 56,
+        backgroundColor: Colors.white24,
+        child: Icon(
+          Icons.phone_in_talk_rounded,
+          size: 56,
+          color: Colors.white,
+        ),
+      );
+    }
+    return AnimatedBuilder(
+      animation: _pulseController!,
+      builder: (context, child) {
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            for (int i = 0; i < 3; i++)
+              Transform.scale(
+                scale: 1.0 + ((_pulseController!.value + i / 3.0) % 1.0) * 1.4,
+                child: Opacity(
+                  opacity: (1.0 - ((_pulseController!.value + i / 3.0) % 1.0)) * 0.35,
+                  child: Container(
+                    width: 112,
+                    height: 112,
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+              ),
+            child!,
+          ],
+        );
+      },
+      child: Container(
+        width: 112,
+        height: 112,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.15),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 2),
+        ),
+        child: const Icon(
+          Icons.phone_in_talk_rounded,
+          size: 48,
+          color: Colors.white,
         ),
       ),
     );
@@ -662,8 +783,9 @@ class _WebRtcCallPageState extends State<WebRtcCallPage> {
     required Color color,
     required VoidCallback onTap,
     double size = 24,
+    String? tooltip,
   }) {
-    return InkWell(
+    Widget button = InkWell(
       onTap: onTap,
       customBorder: const CircleBorder(),
       child: Container(
@@ -673,5 +795,12 @@ class _WebRtcCallPageState extends State<WebRtcCallPage> {
         child: Icon(icon, color: Colors.white, size: size),
       ),
     );
+    if (tooltip != null) {
+      button = Tooltip(
+        message: tooltip,
+        child: button,
+      );
+    }
+    return button;
   }
 }

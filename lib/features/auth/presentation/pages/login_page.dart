@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/branding/app_branding.dart';
@@ -61,7 +62,9 @@ class _LoginPageState extends State<LoginPage> {
       _showError(e.message);
     } catch (e) {
       _showError(
-        'No se pudo conectar al servidor (${ApiConfig.baseUrl}). Ejecuta: cd backend && pnpm run dev',
+        kReleaseMode
+            ? 'No se pudo conectar al servidor. Verifica tu Internet e intenta de nuevo.'
+            : 'No se pudo conectar al servidor (${ApiConfig.baseUrl}). Ejecuta: cd backend && pnpm run dev',
       );
       debugPrint('Login error: $e');
     } finally {
@@ -129,12 +132,6 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _loginAsDemo(String email) async {
     _fillDemoCredentials(email);
     await _submitLogin();
-  }
-
-  void _enterMockRole(Role role, String route) {
-    AppSession.clear();
-    AppSession.setRole(role);
-    Navigator.pushReplacementNamed(context, route);
   }
 
   @override

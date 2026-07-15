@@ -4,12 +4,21 @@ import '../../../../core/widgets/responsive_scaffold.dart';
 import '../../../../core/widgets/safe_avatar.dart';
 import '../../domain/models/pharmacy.dart';
 import '../../domain/models/product.dart';
+import '../../domain/models/prescription_search_result.dart';
 import '../../domain/models/pharmacy_data_mock.dart';
+import '../../../../core/utils/open_external_url.dart';
 
 class PharmacyDetailScreen extends StatefulWidget {
   final Pharmacy pharmacy;
+  final List<MatchedProduct>? prefilledItems;
+  final String initialDeliveryType;
 
-  const PharmacyDetailScreen({super.key, required this.pharmacy});
+  const PharmacyDetailScreen({
+    super.key,
+    required this.pharmacy,
+    this.prefilledItems,
+    this.initialDeliveryType = 'pickup',
+  });
 
   @override
   State<PharmacyDetailScreen> createState() => _PharmacyDetailScreenState();
@@ -19,14 +28,58 @@ class _PharmacyDetailScreenState extends State<PharmacyDetailScreen> {
   final TextEditingController _searchController = TextEditingController();
   final List<Map<String, dynamic>> _cart = [];
   late List<Product> _filteredProducts;
+  late String _deliveryType;
 
   @override
   void initState() {
     super.initState();
-    // Filtramos los productos iniciales por el ID de la farmacia seleccionada
+    _deliveryType = widget.initialDeliveryType;
     _filteredProducts = PharmacyDataMock.products
         .where((p) => p.pharmacyId == widget.pharmacy.id)
         .toList();
+
+    final prefilled = widget.prefilledItems;
+    if (prefilled != null && prefilled.isNotEmpty) {
+      for (final item in prefilled) {
+        _cart.add({
+          'product': Product(
+            id: item.productId,
+            name: item.name,
+            brand: item.brand ?? '',
+            category: 'Receta',
+            price: item.price,
+            isAvailable: item.stock > 0,
+            imageUrl: '',
+            pharmacyId: widget.pharmacy.id,
+          ),
+          'quantity': 1,
+        });
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _cart.isEmpty) return;
+        _showCartModal(context);
+      });
+    }
+  }
+
+  Future<void> _openDirections() async {
+    final address = widget.pharmacy.address.trim();
+    if (address.isEmpty) {
+      _showSnack('Esta farmacia no tiene dirección registrada.');
+      return;
+    }
+    final url =
+        'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(address)}';
+    final ok = await openExternalUrl(url);
+    if (!ok && mounted) {
+      _showSnack('No se pudo abrir Google Maps.');
+    }
+  }
+
+  void _showSnack(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+    );
   }
 
   void _startVoiceSearch() {
@@ -120,6 +173,12 @@ class _PharmacyDetailScreenState extends State<PharmacyDetailScreen> {
       appBar: AppBar(
         title: Text(widget.pharmacy.name),
         actions: [
+          if (widget.pharmacy.address.isNotEmpty)
+            IconButton(
+              tooltip: 'Cómo llegar',
+              icon: const Icon(Icons.directions_rounded),
+              onPressed: _openDirections,
+            ),
           IconButton(
             icon: Badge(
               label: Text(
@@ -147,7 +206,12 @@ class _PharmacyDetailScreenState extends State<PharmacyDetailScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (widget.prefilledItems != null &&
+                      widget.prefilledItems!.isNotEmpty)
+                    _buildPrefilledBanner(),
                   _buildStoreHeader(),
+                  const SizedBox(height: 24),
+                  _buildDeliverySelector(),
                   const SizedBox(height: 24),
                   _buildCategories(),
                   const SizedBox(height: 32),
@@ -166,6 +230,63 @@ class _PharmacyDetailScreenState extends State<PharmacyDetailScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildPrefilledBanner() {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.secondary.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.secondary.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.check_circle_rounded, color: AppColors.secondary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Tu búsqueda está lista. Revisa el carrito y confirma la compra.',
+              style: TextStyle(
+                color: Colors.green.shade800,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDeliverySelector() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Forma de entrega',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        ),
+        const SizedBox(height: 8),
+        RadioListTile<String>(
+          title: const Text('Retiro en farmacia'),
+          subtitle: const Text('Sin costo de envío'),
+          value: 'pickup',
+          groupValue: _deliveryType,
+          onChanged: (v) => setState(() => _deliveryType = v!),
+          contentPadding: EdgeInsets.zero,
+        ),
+        RadioListTile<String>(
+          title: const Text('Delivery a domicilio'),
+          subtitle: const Text('Llega en 30-45 min (+ \$3.50)'),
+          value: 'delivery',
+          groupValue: _deliveryType,
+          onChanged: (v) => setState(() => _deliveryType = v!),
+          contentPadding: EdgeInsets.zero,
+        ),
+      ],
     );
   }
 
@@ -196,6 +317,14 @@ class _PharmacyDetailScreenState extends State<PharmacyDetailScreen> {
                   widget.pharmacy.address,
                   style: const TextStyle(color: Colors.grey, fontSize: 13),
                 ),
+                if (widget.pharmacy.address.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: _openDirections,
+                    icon: const Icon(Icons.map_outlined, size: 18),
+                    label: const Text('Ver en mapa y cómo llegar'),
+                  ),
+                ],
               ],
             ),
           ),
@@ -411,7 +540,8 @@ class _PharmacyDetailScreenState extends State<PharmacyDetailScreen> {
             return sum + (price * qty);
           });
           double tax = subtotal * 0.12;
-          double total = subtotal + tax;
+          double deliveryFee = _deliveryType == 'delivery' ? 3.50 : 0;
+          double total = subtotal + tax + deliveryFee;
 
           return Container(
             height: MediaQuery.of(context).size.height * 0.85,
@@ -520,7 +650,7 @@ class _PharmacyDetailScreenState extends State<PharmacyDetailScreen> {
                           },
                         ),
                 ),
-                _buildPriceSummary(subtotal, tax, total),
+                _buildPriceSummary(subtotal, tax, deliveryFee, total),
               ],
             ),
           );
@@ -529,7 +659,12 @@ class _PharmacyDetailScreenState extends State<PharmacyDetailScreen> {
     );
   }
 
-  Widget _buildPriceSummary(double subtotal, double tax, double total) {
+  Widget _buildPriceSummary(
+    double subtotal,
+    double tax,
+    double deliveryFee,
+    double total,
+  ) {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -558,6 +693,16 @@ class _PharmacyDetailScreenState extends State<PharmacyDetailScreen> {
               Text('\$${tax.toStringAsFixed(2)}'),
             ],
           ),
+          if (deliveryFee > 0) ...[
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Envío'),
+                Text('\$${deliveryFee.toStringAsFixed(2)}'),
+              ],
+            ),
+          ],
           const Divider(height: 24),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -578,12 +723,47 @@ class _PharmacyDetailScreenState extends State<PharmacyDetailScreen> {
           ),
           const SizedBox(height: 24),
           ElevatedButton(
-            onPressed: _cart.isEmpty ? null : () => Navigator.pop(context),
+            onPressed: _cart.isEmpty ? null : () => _confirmPurchase(context),
             style: ElevatedButton.styleFrom(
               minimumSize: const Size(double.infinity, 60),
             ),
-            child: const Text('Confirmar Pago'),
+            child: Text(
+              _deliveryType == 'delivery'
+                  ? 'Confirmar pedido con delivery'
+                  : 'Confirmar compra — retiro en farmacia',
+            ),
           ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmPurchase(BuildContext context) {
+    Navigator.pop(context);
+    final deliveryLabel = _deliveryType == 'delivery'
+        ? 'Te contactará la farmacia para coordinar el delivery.'
+        : 'Presenta tu receta al retirar en ${widget.pharmacy.name}.';
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Pedido registrado'),
+        content: Text(
+          'Tu pedido en ${widget.pharmacy.name} quedó listo.\n\n$deliveryLabel',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Entendido'),
+          ),
+          if (widget.pharmacy.address.isNotEmpty)
+            FilledButton.icon(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _openDirections();
+              },
+              icon: const Icon(Icons.directions_rounded),
+              label: const Text('Ir a la farmacia'),
+            ),
         ],
       ),
     );

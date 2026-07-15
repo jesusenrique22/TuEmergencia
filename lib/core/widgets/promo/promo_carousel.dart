@@ -19,10 +19,8 @@ class PromoCarousel extends StatefulWidget {
   State<PromoCarousel> createState() => _PromoCarouselState();
 }
 
-class _PromoCarouselState extends State<PromoCarousel>
-    with TickerProviderStateMixin {
+class _PromoCarouselState extends State<PromoCarousel> {
   late final PageController _controller;
-  late final AnimationController _pulseController;
   Timer? _autoTimer;
   int _currentPage = 0;
 
@@ -30,10 +28,6 @@ class _PromoCarouselState extends State<PromoCarousel>
   void initState() {
     super.initState();
     _controller = PageController(viewportFraction: 0.90);
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    )..repeat(reverse: true);
     _startAutoAdvance();
   }
 
@@ -55,7 +49,6 @@ class _PromoCarouselState extends State<PromoCarousel>
   void dispose() {
     _autoTimer?.cancel();
     _controller.dispose();
-    _pulseController.dispose();
     super.dispose();
   }
 

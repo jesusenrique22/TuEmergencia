@@ -44,8 +44,10 @@ class ApiClient {
   void _ensureNotInCooldown() {
     if (isInConnectionCooldownFor(ApiConfig.baseUrl)) {
       throw ApiException(
-        'Sin conexión al servidor (${ApiConfig.baseUrl}). '
-        'Inicia: cd backend && pnpm run dev',
+        kReleaseMode
+            ? 'Sin conexión al servidor. Revisa tu Internet e intenta de nuevo.'
+            : 'Sin conexión al servidor (${ApiConfig.baseUrl}). '
+                'Inicia: cd backend && pnpm run dev',
       );
     }
   }
@@ -98,10 +100,12 @@ class ApiClient {
   }
 
   ApiException _connectionError([Object? cause]) => ApiException(
-        cause is TimeoutException
-            ? '${cause.message}. Comprueba cd backend && pnpm run dev y recarga el túnel (Cmd+Shift+R).'
-            : 'No se pudo conectar al servidor (${ApiConfig.baseUrl}). '
-                'Inicia: cd backend && pnpm run dev',
+        kReleaseMode
+            ? 'No se pudo conectar al servidor. Verifica tu conexión a Internet e intenta de nuevo.'
+            : cause is TimeoutException
+                ? '${cause.message}. Comprueba cd backend && pnpm run dev y recarga el túnel (Cmd+Shift+R).'
+                : 'No se pudo conectar al servidor (${ApiConfig.baseUrl}). '
+                    'Inicia: cd backend && pnpm run dev',
       );
 
   Map<String, String> _headers({bool auth = false}) {

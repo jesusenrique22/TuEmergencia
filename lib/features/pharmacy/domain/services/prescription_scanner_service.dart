@@ -1,20 +1,30 @@
-import 'dart:io';
-
 import 'package:flutter/foundation.dart';
+import 'package:image_picker/image_picker.dart';
 
-/// Escaneo de recetas. ML Kit no funciona en simulador iOS (arm64); en móvil
-/// se usa lista demo hasta probar en dispositivo físico o reactivar ML Kit.
+import '../../data/pharmacy_prescription_api_service.dart';
+import '../models/prescription_search_result.dart';
+
+/// Escaneo de recetas → backend (Gemini opcional + inventario en BD).
 class PrescriptionScannerService {
-  Future<List<String>> processPrescription(File imageFile) async {
-    if (kIsWeb) {
-      await Future.delayed(const Duration(seconds: 1));
-      return ['Amoxicilina', 'Ibuprofeno'];
-    }
+  final PharmacyPrescriptionApiService _api = PharmacyPrescriptionApiService();
 
-    // google_mlkit_text_recognition no enlaza en simulador iOS 26+ (arm64).
-    // Evita crash nativo al arrancar; en dispositivo real se puede volver a añadir el plugin.
-    await Future.delayed(const Duration(milliseconds: 800));
-    return ['Amoxicilina', 'Ibuprofeno', 'Paracetamol'];
+  Future<PrescriptionSearchResult> searchFromXFile(XFile image) {
+    return _api.searchByXFile(image);
+  }
+
+  Future<PrescriptionSearchResult> searchFromMedicationNames(
+    List<String> names,
+  ) {
+    return _api.searchByMedicationNames(names);
+  }
+
+  /// Fallback local si la API no está disponible (dev sin backend).
+  Future<PrescriptionSearchResult> searchLocalDemo(List<String> names) async {
+    if (kDebugMode) {
+      debugPrint('[PrescriptionScanner] fallback demo local');
+    }
+    await Future.delayed(const Duration(milliseconds: 600));
+    return _api.searchByMedicationNames(names);
   }
 
   void dispose() {}

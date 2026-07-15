@@ -52,3 +52,4 @@ export 'equipment_rental/presentation/pages/equipment_detail_screen.dart';
 export 'equipment_rental/presentation/pages/equipment_checkout_screen.dart';
 export 'equipment_rental/presentation/pages/my_rentals_screen.dart';
 export 'admin/presentation/pages/clinic_equipment_management_page.dart';
+export 'pharmacy/presentation/pages/prescription_analyzer_page.dart';

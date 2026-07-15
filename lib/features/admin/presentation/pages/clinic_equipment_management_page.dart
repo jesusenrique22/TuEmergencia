@@ -81,13 +81,13 @@ class _ClinicEquipmentManagementPageState extends State<ClinicEquipmentManagemen
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (context) {
+      builder: (sheetCtx) {
         return Padding(
           padding: EdgeInsets.fromLTRB(
             24,
             24,
             24,
-            MediaQuery.of(context).viewInsets.bottom + 24,
+            MediaQuery.of(sheetCtx).viewInsets.bottom + 24,
           ),
           child: SingleChildScrollView(
             child: Column(
@@ -107,7 +107,7 @@ class _ClinicEquipmentManagementPageState extends State<ClinicEquipmentManagemen
                     ),
                     IconButton(
                       icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.pop(context),
+                      onPressed: () => Navigator.pop(sheetCtx),
                     ),
                   ],
                 ),
@@ -184,7 +184,7 @@ class _ClinicEquipmentManagementPageState extends State<ClinicEquipmentManagemen
                     final stock = int.tryParse(stockController.text.trim()) ?? 0;
                     final image = imageController.text.trim();
 
-                    Navigator.pop(context);
+                    Navigator.pop(sheetCtx);
 
                     setState(() => _loading = true);
 
@@ -197,6 +197,7 @@ class _ClinicEquipmentManagementPageState extends State<ClinicEquipmentManagemen
                           stock: stock,
                           imageUrl: image.isNotEmpty ? image : null,
                         );
+                        if (!mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('Equipo agregado exitosamente'), backgroundColor: Colors.green),
                         );
@@ -209,12 +210,14 @@ class _ClinicEquipmentManagementPageState extends State<ClinicEquipmentManagemen
                           stock: stock,
                           imageUrl: image,
                         );
+                        if (!mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('Equipo actualizado exitosamente'), backgroundColor: Colors.green),
                         );
                       }
                       _loadData();
                     } catch (e) {
+                      if (!mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(content: Text('Error: ${e.toString()}'), backgroundColor: Colors.red),
                       );
@@ -242,6 +245,7 @@ class _ClinicEquipmentManagementPageState extends State<ClinicEquipmentManagemen
   Future<void> _toggleEquipmentState(MedicalEquipment eq, bool state) async {
     try {
       await _apiService.updateClinicEquipment(eq.id, isActive: state);
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(state ? 'Equipo activado' : 'Equipo inactivado'),
@@ -250,6 +254,7 @@ class _ClinicEquipmentManagementPageState extends State<ClinicEquipmentManagemen
       );
       _loadData();
     } catch (_) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Error al cambiar estado'), backgroundColor: Colors.red),
       );
@@ -278,11 +283,13 @@ class _ClinicEquipmentManagementPageState extends State<ClinicEquipmentManagemen
     setState(() => _loading = true);
     try {
       await _apiService.deleteClinicEquipment(eq.id);
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Equipo dado de baja exitosamente')),
       );
       _loadData();
     } catch (_) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Error al eliminar equipo'), backgroundColor: Colors.red),
       );
@@ -294,6 +301,7 @@ class _ClinicEquipmentManagementPageState extends State<ClinicEquipmentManagemen
     setState(() => _loading = true);
     try {
       await _apiService.updateRentalStatus(rental.id, newStatus);
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Solicitud actualizada a: ${newStatus == 'ACTIVE' ? 'Entregado' : newStatus == 'COMPLETED' ? 'Devuelto' : 'Cancelado'}'),
@@ -302,6 +310,7 @@ class _ClinicEquipmentManagementPageState extends State<ClinicEquipmentManagemen
       );
       _loadData();
     } catch (_) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Error al actualizar la solicitud'), backgroundColor: Colors.red),
       );

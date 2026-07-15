@@ -179,7 +179,8 @@ class _RegisterPageState extends State<RegisterPage>
       });
     } catch (_) {
       setState(() {
-        _error = 'No se pudo conectar al servidor. Inicia el backend.';
+        _error =
+            'No se pudo conectar al servidor. Verifica tu Internet e intenta de nuevo.';
         _loading = false;
       });
     }

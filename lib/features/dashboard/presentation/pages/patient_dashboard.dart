@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:ui';
 import '../../../../core/auth/app_session.dart';
 import '../../../../core/services/app_realtime.dart';
 import '../../../../core/navigation/app_navigation.dart';
@@ -249,117 +250,187 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
     final user = AppSession.currentUser;
     final displayName = profile?.fullName ?? user?.name ?? 'Paciente';
     final firstName = displayName.split(' ').first;
+    // Initials for avatar
+    final parts = displayName.trim().split(' ');
+    final initials = parts.length >= 2
+        ? '${parts[0][0]}${parts[1][0]}'.toUpperCase()
+        : displayName.substring(0, displayName.length.clamp(0, 2)).toUpperCase();
 
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: AppColors.headerGradient,
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg,
+          AppSpacing.lg,
+          AppSpacing.lg,
+          AppSpacing.sm,
         ),
-        borderRadius: BorderRadius.only(
-          bottomLeft: Radius.circular(AppRadius.xl),
-          bottomRight: Radius.circular(AppRadius.xl),
-        ),
-      ),
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(
-            AppSpacing.lg,
-            AppSpacing.sm,
-            AppSpacing.lg,
-            AppSpacing.xxl,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Hola, $firstName 👋',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 24,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '¿Qué necesitas hoy?',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.85),
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            // Ambient decorative blob — top-right corner
+            Positioned(
+              top: -18,
+              right: -12,
+              child: Container(
+                width: 110,
+                height: 110,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      AppColors.primary.withValues(alpha: 0.12),
+                      AppColors.primary.withValues(alpha: 0.0),
+                    ],
                   ),
-                  GestureDetector(
-                    onTap: () => Navigator.pushNamed(context, AppRoutes.ambulanceCheckout),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                ),
+              ),
+            ),
+            // Second subtle blob — bottom-left
+            Positioned(
+              bottom: -10,
+              left: 60,
+              child: Container(
+                width: 70,
+                height: 70,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      AppColors.secondary.withValues(alpha: 0.08),
+                      AppColors.secondary.withValues(alpha: 0.0),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            // Main content
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    // User avatar with initials
+                    Container(
+                      width: 46,
+                      height: 46,
                       decoration: BoxDecoration(
-                        color: AppColors.emergency,
-                        borderRadius: BorderRadius.circular(999),
+                        shape: BoxShape.circle,
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF059669), Color(0xFF34D399)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
                         boxShadow: [
                           BoxShadow(
-                            color: AppColors.emergency.withValues(alpha: 0.45),
-                            blurRadius: 12,
+                            color: AppColors.primary.withValues(alpha: 0.28),
+                            blurRadius: 10,
                             offset: const Offset(0, 4),
                           ),
                         ],
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.3),
-                          width: 1,
+                      ),
+                      child: Center(
+                        child: Text(
+                          initials,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                            letterSpacing: 0.5,
+                          ),
                         ),
                       ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(
-                            Icons.emergency_rounded,
-                            color: Colors.white,
-                            size: 14,
+                          Row(
+                            children: [
+                              Text(
+                                'Hola, $firstName',
+                                style: const TextStyle(
+                                  color: AppColors.textPrimary,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: -0.5,
+                                  height: 1.1,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Icon(
+                                Icons.waving_hand_rounded,
+                                color: Colors.amber[600],
+                                size: 20,
+                              ),
+                            ],
                           ),
-                          SizedBox(width: 6),
-                          Text(
-                            'SOS',
+                          const SizedBox(height: 3),
+                          const Text(
+                            '¿Cómo podemos ayudarte hoy?',
                             style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 12,
-                              letterSpacing: 0.5,
+                              color: AppColors.textSecondary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                         ],
                       ),
                     ),
-                  ),
-                  const SizedBox(width: AppSpacing.md),
-                  const NotificationBadge(onDarkBackground: true),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.lg),
-              Row(
-                children: [
-                  _HeaderStatChip(
-                    icon: Icons.favorite_rounded,
-                    label: profile?.bloodType ?? 'Sangre',
-                  ),
-                  const SizedBox(width: AppSpacing.sm),
-                  _HeaderStatChip(
-                    icon: Icons.shield_rounded,
-                    label: profile?.insuranceProvider ?? 'Seguro',
-                  ),
-                ],
-              ),
-            ],
-          ),
+                    // SOS button — tight, intentional
+                    GestureDetector(
+                      onTap: () => Navigator.pushNamed(context, AppRoutes.ambulanceCheckout),
+                      child: Container(
+                        width: 38,
+                        height: 38,
+                        decoration: BoxDecoration(
+                          color: AppColors.emergency,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.emergency.withValues(alpha: 0.35),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.emergency_rounded,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    const NotificationBadge(onDarkBackground: false),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                // Minimal stat pills — inline, no box
+                Row(
+                  children: [
+                    _HeaderStatChip(
+                      icon: Icons.water_drop_rounded,
+                      label: profile?.bloodType ?? '—',
+                      iconColor: AppColors.emergency,
+                      backgroundColor: AppColors.emergencyLight,
+                      textColor: AppColors.textPrimary,
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    _HeaderStatChip(
+                      icon: Icons.verified_rounded,
+                      label: profile?.insuranceProvider ?? 'Sin seguro',
+                      iconColor: AppColors.primary,
+                      backgroundColor: AppColors.primaryLight,
+                      textColor: AppColors.textPrimary,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -484,28 +555,37 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
 class _HeaderStatChip extends StatelessWidget {
   final IconData icon;
   final String label;
+  final Color iconColor;
+  final Color backgroundColor;
+  final Color textColor;
 
-  const _HeaderStatChip({required this.icon, required this.label});
+  const _HeaderStatChip({
+    required this.icon,
+    required this.label,
+    required this.iconColor,
+    required this.backgroundColor,
+    required this.textColor,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.18),
+        color: backgroundColor,
         borderRadius: BorderRadius.circular(AppRadius.pill),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: Colors.white, size: 14),
+          Icon(icon, color: iconColor, size: 14),
           const SizedBox(width: 6),
           Text(
             label,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
+            style: TextStyle(
+              color: textColor,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ],

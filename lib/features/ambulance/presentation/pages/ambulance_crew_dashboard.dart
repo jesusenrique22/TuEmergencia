@@ -869,7 +869,7 @@ class _AmbulanceCrewDashboardState extends State<AmbulanceCrewDashboard>
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      builder: (context) => Container(
+      builder: (sheetCtx) => Container(
         padding: const EdgeInsets.all(28),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -930,7 +930,7 @@ class _AmbulanceCrewDashboardState extends State<AmbulanceCrewDashboard>
               children: [
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: () => Navigator.pop(context),
+                    onPressed: () => Navigator.pop(sheetCtx),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -943,7 +943,7 @@ class _AmbulanceCrewDashboardState extends State<AmbulanceCrewDashboard>
                   flex: 2,
                   child: ElevatedButton(
                     onPressed: () async {
-                      Navigator.pop(context);
+                      Navigator.pop(sheetCtx);
                       setState(() => _loading = true);
                       try {
                         final updated = await _emergency.acceptEmergency(item.id);

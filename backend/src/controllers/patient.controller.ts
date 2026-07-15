@@ -60,6 +60,46 @@ export const updateMyProfile = async (req: AuthRequest, res: Response) => {
     data: body,
   });
 
+  // Sincronizar con la tabla PatientPolicy si se provee aseguradora
+  if (body.insuranceProvider && body.policyNumber) {
+    try {
+      const company = await prisma.insuranceCompany.findFirst({
+        where: { name: body.insuranceProvider },
+      });
+      if (company) {
+        // Desactivar otras
+        await prisma.patientPolicy.updateMany({
+          where: {
+            patientId: userId,
+            status: 'ACTIVE',
+          },
+          data: { status: 'INACTIVE' },
+        });
+
+        await prisma.patientPolicy.upsert({
+          where: {
+            patientId_insuranceId: {
+              patientId: userId,
+              insuranceId: company.id,
+            },
+          },
+          create: {
+            patientId: userId,
+            insuranceId: company.id,
+            policyNumber: body.policyNumber,
+            status: 'ACTIVE',
+          },
+          update: {
+            policyNumber: body.policyNumber,
+            status: 'ACTIVE',
+          },
+        });
+      }
+    } catch (err) {
+      console.error('Error al sincronizar póliza en perfil:', err);
+    }
+  }
+
   await prisma.medicalHistory.upsert({
     where: { patientId: userId },
     create: {

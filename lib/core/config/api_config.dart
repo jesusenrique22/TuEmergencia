@@ -40,9 +40,14 @@ class ApiConfig {
       final tunnelApi = devTunnelUrlForPort(ServicePorts.api);
       if (tunnelApi != null) return tunnelApi;
     }
-    return _alignUrlForDevice(
+    final resolved = _alignUrlForDevice(
       _readUrl('API_BASE_URL', 'http://localhost:${ServicePorts.api}'),
     );
+    // TestFlight/release nunca debe usar LAN o localhost.
+    if (kReleaseMode && _isNonPublicApiHost(resolved)) {
+      return 'https://backend-pl89.onrender.com';
+    }
+    return resolved;
   }
 
   /// GET /gateway-health (proxy en :8088) o /health en :3001.
@@ -66,16 +71,28 @@ class ApiConfig {
 
     final fromEnv = _env('SOCKET_URL');
     if (fromEnv != null) {
-      return _alignUrlForDevice(fromEnv);
+      final resolved = _alignUrlForDevice(fromEnv);
+      if (kReleaseMode && _isNonPublicApiHost(resolved)) {
+        return 'https://gateway-i9yu.onrender.com';
+      }
+      return resolved;
     }
     final api = _readUrl('API_BASE_URL', 'http://localhost:${ServicePorts.api}');
     final apiPort = ':${ServicePorts.api}';
     if (api.contains(apiPort)) {
-      return _alignUrlForDevice(
+      final resolved = _alignUrlForDevice(
         api.replaceFirst(apiPort, ':${ServicePorts.realtime}'),
       );
+      if (kReleaseMode && _isNonPublicApiHost(resolved)) {
+        return 'https://gateway-i9yu.onrender.com';
+      }
+      return resolved;
     }
-    return _alignUrlForDevice('$api:${ServicePorts.realtime}');
+    final resolved = _alignUrlForDevice('$api:${ServicePorts.realtime}');
+    if (kReleaseMode && _isNonPublicApiHost(resolved)) {
+      return 'https://gateway-i9yu.onrender.com';
+    }
+    return resolved;
   }
 
   static String _readUrl(String key, String fallback) {
@@ -87,8 +104,10 @@ class ApiConfig {
     return int.tryParse(_env('FLUTTER_WEB_PORT') ?? '') ?? ServicePorts.flutterWeb;
   }
 
-  /// IP/host del Mac en Wi‑Fi para probar desde otro dispositivo (`.env` → DEV_HOST).
+  /// IP/host del Mac en Wi‑Fi para probar desde otro dispositivo (`.env.local` → DEV_HOST).
+  /// Ignorado en release/TestFlight para no apuntar a IPs LAN.
   static String? get devHost {
+    if (kReleaseMode) return null;
     return _env('DEV_HOST');
   }
 
@@ -124,6 +143,20 @@ class ApiConfig {
   static bool _isLoopbackHost(String host) {
     final h = host.toLowerCase();
     return h == 'localhost' || h == '127.0.0.1' || h == '::1';
+  }
+
+  /// Hosts que no son válidos en TestFlight (LAN / loopback).
+  static bool _isNonPublicApiHost(String url) {
+    try {
+      final host = Uri.parse(url).host.toLowerCase();
+      if (_isLoopbackHost(host)) return true;
+      if (host.startsWith('192.168.')) return true;
+      if (host.startsWith('10.')) return true;
+      if (RegExp(r'^172\.(1[6-9]|2\d|3[0-1])\.').hasMatch(host)) return true;
+      return false;
+    } catch (_) {
+      return true;
+    }
   }
 
   /// Alinea localhost/127.0.0.1 con la plataforma y el host desde el que se abrió la app.

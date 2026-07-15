@@ -10,6 +10,8 @@
     "dev:debug": "bash ../scripts/run-backend-dev-debug.sh",
     "build": "tsc",
     "db:seed": "ts-node-dev --transpile-only src/scripts/seed.ts",
+    "db:seed:pharmacy": "ts-node-dev --transpile-only src/scripts/seed-pharmacy-inventory.ts",
+    "test:prescription": "ts-node-dev --transpile-only src/scripts/test-prescription-search.ts",
     "db:seed:fresh": "ts-node-dev --transpile-only src/scripts/seed.ts -- --fresh --yes",
     "db:backfill-profiles": "ts-node-dev --transpile-only src/scripts/backfill-profiles.ts",
     "db:migrate": "prisma migrate dev",

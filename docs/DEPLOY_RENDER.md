@@ -33,6 +33,8 @@ corepack enable && pnpm install --frozen-lockfile && pnpm run build && pnpm exec
 | `NODE_ENV` | `production` |
 | `APP_TIMEZONE` | `America/Caracas` |
 | `APP_TZ_OFFSET_MINUTES` | `-240` |
+| `GEMINI_API_KEY` | API key de [Google AI Studio](https://aistudio.google.com/apikey) |
+| `GEMINI_MODEL` | `gemini-3.5-flash` |
 
 **Health check:** `/health`
 

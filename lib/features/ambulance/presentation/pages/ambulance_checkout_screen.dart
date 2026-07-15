@@ -13,6 +13,8 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../catalog/domain/models/catalog_models.dart';
 import '../../../catalog/domain/repositories/catalog_repository.dart';
 import '../../../insurance/domain/services/insurance_calculator.dart';
+import '../../../insurance/domain/models/insurance_models.dart';
+import '../../../insurance/domain/services/insurance_api_service.dart';
 import '../../../emergency/domain/models/emergency_models.dart';
 import '../../../emergency/domain/repositories/emergency_repository.dart';
 
@@ -46,6 +48,7 @@ class _AmbulanceCheckoutScreenState extends State<AmbulanceCheckoutScreen>
   String? _locationError;
   GeoPoint? _origin;
   String _selectedPaymentMethod = 'PAGO_MOVIL';
+  PatientPolicy? _activePolicy;
 
   static const _baseFare = 25.0;
   static const _perKmRate = 2.5;
@@ -67,6 +70,18 @@ class _AmbulanceCheckoutScreenState extends State<AmbulanceCheckoutScreen>
 
     _loadFacilities();
     _resolveLocation();
+    _loadActivePolicy();
+  }
+
+  void _loadActivePolicy() async {
+    try {
+      final policy = await InsuranceApiService.instance.getMyPolicy();
+      if (mounted) {
+        setState(() {
+          _activePolicy = policy;
+        });
+      }
+    } catch (_) {}
   }
 
   @override
@@ -142,6 +157,13 @@ class _AmbulanceCheckoutScreenState extends State<AmbulanceCheckoutScreen>
 
     setState(() => _isRequesting = true);
     try {
+      final subtotal = _calculateFare();
+      final breakdown = InsuranceCalculator.calculateCopay(
+        subtotal: subtotal,
+        category: 'ambulance',
+        policy: _activePolicy,
+      );
+
       final result = await _emergency.create(
         CreateEmergencyParams(
           facilityId: _selectedClinic!.id,
@@ -153,6 +175,22 @@ class _AmbulanceCheckoutScreenState extends State<AmbulanceCheckoutScreen>
           paymentMethod: _selectedPaymentMethod,
         ),
       );
+
+      if (_activePolicy != null) {
+        try {
+          await InsuranceApiService.instance.createInvoice(
+            requestId: result.id,
+            insuranceId: _activePolicy!.insuranceId,
+            subtotal: subtotal,
+            coveredAmount: breakdown['coveredAmount'] ?? 0.0,
+            copayAmount: breakdown['totalToPay'] ?? subtotal,
+            status: 'PENDING',
+          );
+        } catch (invoiceErr) {
+          debugPrint('Error creating insurance invoice: $invoiceErr');
+        }
+      }
+
       if (!mounted) return;
       setState(() => _isRequesting = false);
       _showSuccessDialog(result);
@@ -899,7 +937,11 @@ class _AmbulanceCheckoutScreenState extends State<AmbulanceCheckoutScreen>
     final subtotal = _calculateFare();
     Map<String, double>? breakdown;
     try {
-      breakdown = InsuranceCalculator.calculateCopay(subtotal: subtotal, category: 'ambulance');
+      breakdown = InsuranceCalculator.calculateCopay(
+        subtotal: subtotal,
+        category: 'ambulance',
+        policy: _activePolicy,
+      );
     } catch (_) {}
 
     final dist = _estimatedDistance;
@@ -1169,7 +1211,11 @@ class _AmbulanceCheckoutScreenState extends State<AmbulanceCheckoutScreen>
                   final subtotal = _calculateFare();
                   double total = subtotal;
                   try {
-                    final b = InsuranceCalculator.calculateCopay(subtotal: subtotal, category: 'ambulance');
+                    final b = InsuranceCalculator.calculateCopay(
+                      subtotal: subtotal,
+                      category: 'ambulance',
+                      policy: _activePolicy,
+                    );
                     total = b['totalToPay'] ?? subtotal;
                   } catch (_) {}
                   return Text(

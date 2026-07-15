@@ -72,6 +72,7 @@ class AppRoutes {
   static const String clinicEquipmentManagement = '/clinic_admin/equipment';
   static const String equipmentMarketplace = '/equipment_rental/marketplace';
   static const String myRentals = '/equipment_rental/my_rentals';
+  static const String explainPrescription = '/explain_prescription';
 
   // Backwards-compatible aliases used by older mock notifications.
   static const String erIncomingAlias = '/er_incoming';
@@ -513,6 +514,7 @@ class AppRoutes {
     clinicEquipmentManagement: {Role.clinicAdmin},
     equipmentMarketplace: {Role.patient},
     myRentals: {Role.patient},
+    explainPrescription: {Role.patient},
   };
 
   static bool isAllowedForRole(String? route, Role role) {
@@ -659,6 +661,7 @@ class AppRoutes {
     clinicEquipmentManagement: (_) => const ClinicEquipmentManagementPage(),
     equipmentMarketplace: (_) => const EquipmentMarketplaceScreen(),
     myRentals: (_) => const MyRentalsScreen(),
+    explainPrescription: (_) => const PrescriptionAnalyzerPage(),
     erIncomingAlias: (_) => const ERIncomingDashboard(),
     ambulanceDriverAlias: (_) => const AmbulanceCrewDashboard(),
   };

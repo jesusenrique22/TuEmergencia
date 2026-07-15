@@ -12,16 +12,27 @@ import 'package:tuemergencia/core/auth/app_session.dart';
 import 'package:tuemergencia/core/navigation/app_navigation.dart';
 import 'package:tuemergencia/core/navigation/app_routes.dart';
 import 'package:tuemergencia/features/auth/domain/models/role.dart';
+import 'package:tuemergencia/features/auth/domain/models/user.dart';
 import 'package:tuemergencia/main.dart';
 
 void main() {
   testWidgets('App starts smoke test', (WidgetTester tester) async {
-    await tester.pumpWidget(const TuEmergenciaApp());
-    await tester.pumpAndSettle();
+    AppSession.setSession(
+      user: User(
+        id: '1',
+        name: 'Juan Pérez',
+        email: 'juan@patient.com',
+        role: Role.patient,
+        avatarUrl: '',
+      ),
+      tokenValue: 'mock_token',
+    );
+    await tester.pumpWidget(const TuEmergenciaApp(hasSession: true));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
 
     expect(find.text('Hola, Juan'), findsOneWidget);
-    expect(find.text('Acciones esenciales'), findsOneWidget);
-    expect(find.text('Servicios complementarios'), findsOneWidget);
+    expect(find.text('Próxima cita'), findsOneWidget);
   });
 
   test('navigation destinations are filtered by role', () {
@@ -59,7 +70,7 @@ void main() {
       );
     }
 
-    expect(AppRoutes.normalize(AppRoutes.videoCall), AppRoutes.appointments);
+    expect(AppRoutes.normalize(AppRoutes.videoCall), AppRoutes.videoCall);
     expect(
       AppRoutes.normalize(AppRoutes.tracking),
       AppRoutes.ambulanceCheckout,
@@ -87,15 +98,26 @@ void main() {
   testWidgets('root module back returns to role home', (
     WidgetTester tester,
   ) async {
-    AppSession.setRole(Role.patient);
+    AppSession.setSession(
+      user: User(
+        id: '1',
+        name: 'Juan Pérez',
+        email: 'juan@patient.com',
+        role: Role.patient,
+        avatarUrl: '',
+      ),
+      tokenValue: 'mock_token',
+    );
 
     await tester.pumpWidget(
       MaterialApp(initialRoute: AppRoutes.pharmacy, routes: AppRoutes.routes),
     );
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
 
-    await tester.tap(find.byIcon(Icons.arrow_back_ios_new));
-    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.arrow_back_ios_new_rounded));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
 
     expect(find.text('Hola, Juan'), findsOneWidget);
     expect(find.text('Buscador Inteligente'), findsNothing);

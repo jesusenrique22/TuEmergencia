@@ -53,6 +53,8 @@ model User {
   emergencyRequests   EmergencyRequest[]    @relation("EmergencyPatient")
   emergencyMessages   EmergencyChatMessage[]
   transitMedicalLogs  TransitMedicalLog[]
+  patientPolicies     PatientPolicy[]       @relation("PatientPolicyUser")
+  medicalInvoices     MedicalInvoice[]      @relation("PatientInvoiceUser")
 
   @@index([role])
   @@map("users")
@@ -211,6 +213,7 @@ model MedicalFacility {
   emergencyRequests EmergencyRequest[]
   equipments        MedicalEquipment[]
   equipmentRentals  EquipmentRental[]
+  insurances        InsuranceCompany[]
 
   @@map("medical_facilities")
 }
@@ -672,4 +675,71 @@ model EquipmentRental {
   facility    MedicalFacility  @relation(fields: [facilityId], references: [id], onDelete: Cascade)
 
   @@map("equipment_rentals")
+}
+
+model InsuranceCompany {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  logoUrl   String   @map("logo_url")
+  clinicId  String?  @map("clinic_id")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  clinic    MedicalFacility?    @relation(fields: [clinicId], references: [id])
+  coverages InsuranceCoverage[]
+  policies  PatientPolicy[]
+  invoices  MedicalInvoice[]
+
+  @@map("insurance_companies")
+}
+
+model InsuranceCoverage {
+  id                       String   @id @default(cuid())
+  insuranceId              String   @map("insurance_id")
+  maxLimit                 Float    @map("max_limit")
+  pharmacyPercentage       Float    @map("pharmacy_percentage")
+  ambulancePercentage      Float    @map("ambulance_percentage")
+  laboratoryPercentage     Float    @map("laboratory_percentage")
+  erConsultationPercentage Float    @map("er_consultation_percentage")
+  createdAt                DateTime @default(now()) @map("created_at")
+  updatedAt                DateTime @updatedAt @map("updated_at")
+
+  insurance InsuranceCompany @relation(fields: [insuranceId], references: [id], onDelete: Cascade)
+
+  @@map("insurance_coverages")
+}
+
+model PatientPolicy {
+  id           String   @id @default(cuid())
+  patientId    String   @map("patient_id")
+  insuranceId  String   @map("insurance_id")
+  policyNumber String   @map("policy_number")
+  status       String   @default("ACTIVE")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  patient   User             @relation("PatientPolicyUser", fields: [patientId], references: [id], onDelete: Cascade)
+  insurance InsuranceCompany @relation(fields: [insuranceId], references: [id], onDelete: Cascade)
+
+  @@unique([patientId, insuranceId])
+  @@map("patient_policies")
+}
+
+model MedicalInvoice {
+  id            String   @id @default(cuid())
+  requestId     String   @map("request_id")
+  patientId     String   @map("patient_id")
+  insuranceId   String   @map("insurance_id")
+  subtotal      Float
+  coveredAmount Float    @map("covered_amount")
+  copayAmount   Float    @map("copay_amount")
+  status        String   @default("PENDING")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  patient   User             @relation("PatientInvoiceUser", fields: [patientId], references: [id], onDelete: Cascade)
+  insurance InsuranceCompany @relation(fields: [insuranceId], references: [id], onDelete: Cascade)
+
+  @@map("medical_invoices")
 }

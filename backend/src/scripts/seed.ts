@@ -41,6 +41,10 @@ async function clearDatabase() {
     prisma.pharmacyOrder.deleteMany(),
     prisma.medicalHistoryEntry.deleteMany(),
     prisma.patientWeightControl.deleteMany(),
+    prisma.medicalInvoice.deleteMany(),
+    prisma.patientPolicy.deleteMany(),
+    prisma.insuranceCoverage.deleteMany(),
+    prisma.insuranceCompany.deleteMany(),
     prisma.chatConversation.deleteMany(),
     prisma.appointment.deleteMany(),
     prisma.clinicInvitation.deleteMany(),
@@ -510,6 +514,95 @@ async function seed() {
       heightCm: '176',
       insuranceProvider: 'Seguros Mercantil',
       policyNumber: 'MC-2024-889900',
+    },
+    update: {},
+  });
+
+  console.log('Seeding Insurance Companies and Coverages...');
+  const company1 = await prisma.insuranceCompany.upsert({
+    where: { name: 'Seguros Mercantil' },
+    create: {
+      id: 'ins-001',
+      name: 'Seguros Mercantil',
+      logoUrl: 'https://images.unsplash.com/photo-1599305090598-fe179d501c27?auto=format&fit=crop&q=80&w=100',
+    },
+    update: {},
+  });
+
+  const company2 = await prisma.insuranceCompany.upsert({
+    where: { name: 'Mapfre Global' },
+    create: {
+      id: 'ins-002',
+      name: 'Mapfre Global',
+      logoUrl: 'https://images.unsplash.com/photo-1560179707-f14e90ef3623?auto=format&fit=crop&q=80&w=100',
+    },
+    update: {},
+  });
+
+  const company3 = await prisma.insuranceCompany.upsert({
+    where: { name: 'Plan Exclusivo Metropolitana' },
+    create: {
+      id: 'ins-003',
+      name: 'Plan Exclusivo Metropolitana',
+      logoUrl: 'https://images.unsplash.com/photo-1519494026892-80bbd2d6fd0d?auto=format&fit=crop&q=80&w=100',
+      clinicId: facilities[0].id,
+    },
+    update: {},
+  });
+
+  await prisma.insuranceCoverage.upsert({
+    where: { id: 'cov-001' },
+    create: {
+      id: 'cov-001',
+      insuranceId: company1.id,
+      maxLimit: 50000.0,
+      pharmacyPercentage: 0.70,
+      ambulancePercentage: 1.0,
+      laboratoryPercentage: 0.80,
+      erConsultationPercentage: 0.90,
+    },
+    update: {},
+  });
+
+  await prisma.insuranceCoverage.upsert({
+    where: { id: 'cov-002' },
+    create: {
+      id: 'cov-002',
+      insuranceId: company3.id,
+      maxLimit: 10000.0,
+      pharmacyPercentage: 0.90,
+      ambulancePercentage: 1.0,
+      laboratoryPercentage: 0.90,
+      erConsultationPercentage: 1.0,
+    },
+    update: {},
+  });
+
+  await prisma.patientPolicy.upsert({
+    where: { patientId_insuranceId: { patientId: patient.id, insuranceId: company1.id } },
+    create: {
+      id: 'pol-999',
+      patientId: patient.id,
+      insuranceId: company1.id,
+      policyNumber: 'MC-2024-889900',
+      status: 'ACTIVE',
+    },
+    update: {
+      status: 'ACTIVE',
+    },
+  });
+
+  await prisma.medicalInvoice.upsert({
+    where: { id: 'INV-8801' },
+    create: {
+      id: 'INV-8801',
+      requestId: 'req-9901',
+      patientId: patient.id,
+      insuranceId: company1.id,
+      subtotal: 150.0,
+      coveredAmount: 150.0,
+      copayAmount: 0.0,
+      status: 'PENDING',
     },
     update: {},
   });

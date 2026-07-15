@@ -7,6 +7,8 @@ import '../../../../core/navigation/app_routes.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/responsive_scaffold.dart';
+import '../../../insurance/domain/models/insurance_models.dart';
+import '../../../insurance/domain/services/insurance_api_service.dart';
 import '../../data/patient_api_service.dart';
 import '../../data/patient_profile_repository.dart';
 import '../../domain/models/patient_profile.dart';
@@ -26,6 +28,9 @@ class _ClinicalHistoryFormPageState extends State<ClinicalHistoryFormPage>
   bool _didLoad = false;
   late final AnimationController _headerCtrl;
   late final Animation<double> _headerAnim;
+
+  List<HealthInsurance> _availableInsurances = [];
+  bool _loadingInsurances = true;
 
   // ── Controllers ───────────────────────────────────────────────────────────
   final _referredBy = TextEditingController();
@@ -90,6 +95,21 @@ class _ClinicalHistoryFormPageState extends State<ClinicalHistoryFormPage>
     _weight.addListener(_recalculateBmi);
     _height.addListener(_recalculateBmi);
     _birthDate.addListener(_updateAge);
+    _loadInsurances();
+  }
+
+  Future<void> _loadInsurances() async {
+    try {
+      final list = await InsuranceApiService.instance.getCompanies();
+      setState(() {
+        _availableInsurances = list;
+        _loadingInsurances = false;
+      });
+    } catch (_) {
+      setState(() {
+        _loadingInsurances = false;
+      });
+    }
   }
 
   @override
@@ -645,9 +665,53 @@ class _ClinicalHistoryFormPageState extends State<ClinicalHistoryFormPage>
   }
 
   Widget _sectionInsurance() {
-    return _TwoCol(
-      left: _CleanField(ctrl: _insurance, label: 'Aseguradora', icon: Icons.business_rounded),
-      right: _CleanField(ctrl: _policy, label: 'Número de póliza', icon: Icons.numbers_rounded),
+    if (_loadingInsurances) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(16.0),
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    if (_availableInsurances.isEmpty) {
+      return _TwoCol(
+        left: _CleanField(ctrl: _insurance, label: 'Aseguradora', icon: Icons.business_rounded),
+        right: _CleanField(ctrl: _policy, label: 'Número de póliza', icon: Icons.numbers_rounded),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        DropdownButtonFormField<String>(
+          value: _insurance.text.isEmpty ? null : _insurance.text,
+          decoration: InputDecoration(
+            labelText: 'Selecciona tu Aseguradora',
+            prefixIcon: const Icon(Icons.business_rounded, color: AppColors.primary),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: AppColors.border),
+            ),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          ),
+          items: _availableInsurances.map((c) {
+            return DropdownMenuItem<String>(
+              value: c.name,
+              child: Text(c.name),
+            );
+          }).toList(),
+          onChanged: (val) {
+            if (val != null) {
+              setState(() {
+                _insurance.text = val;
+              });
+            }
+          },
+        ),
+        const SizedBox(height: 12),
+        _CleanField(ctrl: _policy, label: 'Número de póliza', icon: Icons.numbers_rounded),
+      ],
     );
   }
 

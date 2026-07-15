@@ -52,6 +52,16 @@ class PromoPartner {
 class PromoMockData {
   static const offers = [
     PromoOffer(
+      id: 'ai_prescription',
+      title: 'Descifra tu receta con IA',
+      subtitle: 'Toma una foto y Gemini te explicará dosis y precauciones al instante.',
+      badge: 'Gemini IA',
+      ctaLabel: 'Escanear ahora',
+      route: '/explain_prescription',
+      gradient: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
+      icon: Icons.auto_awesome_rounded,
+    ),
+    PromoOffer(
       id: '1',
       title: 'Consulta con cardiología',
       subtitle: 'Dr. Martínez · Clínica Santa María',

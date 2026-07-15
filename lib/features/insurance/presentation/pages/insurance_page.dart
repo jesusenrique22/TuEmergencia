@@ -2,9 +2,39 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/responsive_scaffold.dart';
 import '../../../../core/widgets/safe_avatar.dart';
+import '../../domain/models/insurance_models.dart';
+import '../../domain/services/insurance_api_service.dart';
 
-class InsurancePage extends StatelessWidget {
+class InsurancePage extends StatefulWidget {
   const InsurancePage({super.key});
+
+  @override
+  State<InsurancePage> createState() => _InsurancePageState();
+}
+
+class _InsurancePageState extends State<InsurancePage> {
+  bool _isLoading = true;
+  PatientPolicy? _activePolicy;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPolicy();
+  }
+
+  Future<void> _loadPolicy() async {
+    try {
+      final policy = await InsuranceApiService.instance.getMyPolicy();
+      setState(() {
+        _activePolicy = policy;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -14,29 +44,64 @@ class InsurancePage extends StatelessWidget {
         elevation: 0,
         backgroundColor: Colors.transparent,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildDigitalCard(),
-            const SizedBox(height: 32),
-            _buildSectionTitle('Mi Cobertura'),
-            const SizedBox(height: 16),
-            _buildCoverageList(),
-            const SizedBox(height: 32),
-            _buildSectionTitle('Beneficiarios'),
-            const SizedBox(height: 16),
-            _buildBeneficiaryList(),
-            const SizedBox(height: 40),
-            _buildDownloadButton(context),
-          ],
-        ),
-      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _activePolicy == null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.shield_outlined, size: 64, color: AppColors.textSecondary),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'No hay póliza de seguro activa',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Asocia una póliza activa desde tu billetera de seguros para ver tu cobertura detallada.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: AppColors.textSecondary),
+                        ),
+                        const SizedBox(height: 24),
+                        ElevatedButton(
+                          onPressed: () {
+                            Navigator.pushReplacementNamed(context, '/insurance_wallet');
+                          },
+                          child: const Text('Ir a Mis Seguros'),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildDigitalCard(),
+                      const SizedBox(height: 32),
+                      _buildSectionTitle('Mi Cobertura'),
+                      const SizedBox(height: 16),
+                      _buildCoverageList(),
+                      const SizedBox(height: 32),
+                      _buildSectionTitle('Beneficiarios'),
+                      const SizedBox(height: 16),
+                      _buildBeneficiaryList(),
+                      const SizedBox(height: 40),
+                      _buildDownloadButton(context),
+                    ],
+                  ),
+                ),
     );
   }
 
   Widget _buildDigitalCard() {
+    final insurance = _activePolicy!.insurance;
+    final policyNum = _activePolicy!.policyNumber;
+
     return Container(
       height: 220,
       width: double.infinity,
@@ -59,7 +124,6 @@ class InsurancePage extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         child: Stack(
           children: [
-            // Glassmorphism effect
             Positioned(
               right: -50,
               top: -50,
@@ -81,22 +145,22 @@ class InsurancePage extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Expanded(
+                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'VITA Secure',
-                              style: TextStyle(
+                              insurance?.name ?? 'Seguro Activo',
+                              style: const TextStyle(
                                 color: Colors.white,
-                                fontSize: 20,
+                                fontSize: 18,
                                 fontWeight: FontWeight.bold,
                                 letterSpacing: 1.2,
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
-                            Text(
-                              'Plan Platinum Plus',
+                            const Text(
+                              'Plan Activo Cobertura VITA',
                               style: TextStyle(
                                 color: Colors.white70,
                                 fontSize: 12,
@@ -136,8 +200,8 @@ class InsurancePage extends StatelessWidget {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          _buildCardInfo('PÓLIZA', 'V-0824-2023'),
-                          _buildCardInfo('VENCE', '12/2024'),
+                          _buildCardInfo('PÓLIZA', policyNum),
+                          _buildCardInfo('ESTADO', _activePolicy!.status.name.toUpperCase()),
                         ],
                       ),
                     ],
@@ -187,13 +251,24 @@ class InsurancePage extends StatelessWidget {
   }
 
   Widget _buildCoverageList() {
+    final coverage = _activePolicy?.insurance?.coverages?.firstOrNull;
+    if (coverage == null) {
+      return const Text('Sin datos de porcentajes de cobertura.');
+    }
+
     return Column(
       children: [
-        _buildCoverageItem('Consultas Médicas', 0.8, '80%'),
+        _buildCoverageItem('Consultas Clínicas y ER', coverage.erConsultationPercentage,
+            '${(coverage.erConsultationPercentage * 100).round()}%'),
         const SizedBox(height: 16),
-        _buildCoverageItem('Hospitalización', 1.0, '100%'),
+        _buildCoverageItem('Traslado y Ambulancias', coverage.ambulancePercentage,
+            '${(coverage.ambulancePercentage * 100).round()}%'),
         const SizedBox(height: 16),
-        _buildCoverageItem('Farmacia y Medicinas', 0.5, '50%'),
+        _buildCoverageItem('Farmacia y Medicinas', coverage.pharmacyPercentage,
+            '${(coverage.pharmacyPercentage * 100).round()}%'),
+        const SizedBox(height: 16),
+        _buildCoverageItem('Exámenes de Laboratorio', coverage.laboratoryPercentage,
+            '${(coverage.laboratoryPercentage * 100).round()}%'),
       ],
     );
   }

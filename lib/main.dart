@@ -31,10 +31,12 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
     await dotenv.load(fileName: '.env');
-    // Overrides locales opcionales (dev en Mac, no commitear .env.local).
-    try {
-      await dotenv.load(fileName: '.env.local', mergeWith: dotenv.env);
-    } catch (_) {}
+    // Solo en debug: .env.local apunta a Mac/LAN. Nunca en TestFlight/release.
+    if (kDebugMode) {
+      try {
+        await dotenv.load(fileName: '.env.local', mergeWith: dotenv.env);
+      } catch (_) {}
+    }
   } catch (e) {
     // Ignorar errores de carga en web u otros entornos donde .env no esté disponible
     debugPrint('Warning: No se pudo cargar .env - $e');

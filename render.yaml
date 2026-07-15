@@ -40,6 +40,11 @@ services:
         value: America/Caracas
       - key: APP_TZ_OFFSET_MINUTES
         value: "-240"
+      # Recetas (Gemini Vision) — poner la key en Render Dashboard
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash
 
   # ── WebSocket (Socket.IO) ─────────────────────────────────────────────────
   - type: web
