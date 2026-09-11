@@ -1,5 +1,5 @@
 -- CreateTable
-CREATE TABLE "insurance_companies" (
+CREATE TABLE IF NOT EXISTS "insurance_companies" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "logo_url" TEXT NOT NULL,
@@ -12,7 +12,7 @@ CREATE TABLE "insurance_companies" (
 );
 
 -- CreateTable
-CREATE TABLE "insurance_coverages" (
+CREATE TABLE IF NOT EXISTS "insurance_coverages" (
     "id" TEXT NOT NULL,
     "insurance_id" TEXT NOT NULL,
     "max_limit" DOUBLE PRECISION NOT NULL,
@@ -27,7 +27,7 @@ CREATE TABLE "insurance_coverages" (
 );
 
 -- CreateTable
-CREATE TABLE "patient_policies" (
+CREATE TABLE IF NOT EXISTS "patient_policies" (
     "id" TEXT NOT NULL,
     "patient_id" TEXT NOT NULL,
     "insurance_id" TEXT NOT NULL,
@@ -40,7 +40,7 @@ CREATE TABLE "patient_policies" (
 );
 
 -- CreateTable
-CREATE TABLE "medical_invoices" (
+CREATE TABLE IF NOT EXISTS "medical_invoices" (
     "id" TEXT NOT NULL,
     "request_id" TEXT NOT NULL,
     "patient_id" TEXT NOT NULL,
@@ -56,10 +56,10 @@ CREATE TABLE "medical_invoices" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "insurance_companies_name_key" ON "insurance_companies"("name");
+CREATE UNIQUE INDEX IF NOT EXISTS "insurance_companies_name_key" ON "insurance_companies"("name");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "patient_policies_patient_id_insurance_id_key" ON "patient_policies"("patient_id", "insurance_id");
+CREATE UNIQUE INDEX IF NOT EXISTS "patient_policies_patient_id_insurance_id_key" ON "patient_policies"("patient_id", "insurance_id");
 
 -- AddForeignKey
 ALTER TABLE "insurance_companies" ADD CONSTRAINT "insurance_companies_clinic_id_fkey" FOREIGN KEY ("clinic_id") REFERENCES "medical_facilities"("id") ON DELETE SET NULL ON UPDATE CASCADE;

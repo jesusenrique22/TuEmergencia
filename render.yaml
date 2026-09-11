@@ -13,12 +13,7 @@ services:
     runtime: node
     rootDir: backend
     plan: free
-    buildCommand: >-
-      corepack enable &&
-      pnpm install --frozen-lockfile &&
-      pnpm run build &&
-      pnpm exec prisma generate &&
-      pnpm exec prisma migrate deploy
+    buildCommand: bash ./render-build.sh
     startCommand: pnpm start
     healthCheckPath: /health
     envVars:

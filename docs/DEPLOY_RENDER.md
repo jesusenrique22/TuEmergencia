@@ -17,6 +17,13 @@ Neon PostgreSQL                           ← Base de datos (solo backend)
 
 **Build command:**
 ```bash
+bash ./render-build.sh
+```
+
+(Equivale a instalar con `--prod=false` — necesario porque `NODE_ENV=production` omite TypeScript/Prisma — y luego `tsc` + migraciones.)
+
+Antes (puede fallar en Render):
+```bash
 corepack enable && pnpm install --frozen-lockfile && pnpm run build && pnpm exec prisma generate && pnpm exec prisma migrate deploy
 ```
 

@@ -202,6 +202,57 @@ async function callGeminiModel(
   throw new Error(lastError);
 }
 
+async function parseViaGeminiService(
+  baseUrl: string,
+  imageBase64: string,
+  mimeType: string,
+): Promise<{ medications: string[]; fromCache: boolean }> {
+  const url = `${baseUrl.replace(/\/$/, '')}/api/prescription/parse`;
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const serviceKey = process.env.GEMINI_SERVICE_API_KEY?.trim();
+  if (serviceKey) headers['x-api-key'] = serviceKey;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ imageBase64, mimeType }),
+  });
+
+  const raw = await response.text();
+  let data: {
+    medications?: string[];
+    fromCache?: boolean;
+    error?: string;
+    code?: string;
+  } = {};
+  try {
+    data = JSON.parse(raw) as typeof data;
+  } catch {
+    /* ignore */
+  }
+
+  if (response.status === 422) {
+    const issue = (data.code?.toLowerCase() || 'unreadable') as PrescriptionImageIssue;
+    throw new PrescriptionImageError(
+      data.error || PRESCRIPTION_ISSUE_MESSAGES.unreadable,
+      ['not_prescription', 'blurry', 'unreadable', 'no_medications'].includes(issue)
+        ? issue
+        : 'unreadable',
+    );
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      data.error || `Gemini service error (${response.status}): ${raw.slice(0, 200)}`,
+    );
+  }
+
+  return {
+    medications: Array.isArray(data.medications) ? data.medications : [],
+    fromCache: Boolean(data.fromCache),
+  };
+}
+
 /** Gemini Vision — una llamada por imagen; con caché por hash. */
 export async function parsePrescriptionImage(
   imageBase64: string,
@@ -211,6 +262,22 @@ export async function parsePrescriptionImage(
   const cached = cache.get(hash);
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
     return { medications: cached.medications, fromCache: true };
+  }
+
+  // Preferir microservicio api-geminis en producción si está configurado.
+  const serviceUrl = process.env.GEMINI_SERVICE_URL?.trim();
+  if (serviceUrl) {
+    try {
+      const result = await parseViaGeminiService(serviceUrl, imageBase64, mimeType);
+      cache.set(hash, { medications: result.medications, at: Date.now() });
+      return result;
+    } catch (error) {
+      if (error instanceof PrescriptionImageError) throw error;
+      console.warn(
+        '[prescription] GEMINI_SERVICE_URL falló, intentando Gemini directo…',
+        error instanceof Error ? error.message : error,
+      );
+    }
   }
 
   const apiKey = process.env.GEMINI_API_KEY?.trim();

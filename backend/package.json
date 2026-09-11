@@ -8,7 +8,7 @@
     "start": "node dist/index.js",
     "dev": "bash ../scripts/run-backend-dev.sh",
     "dev:debug": "bash ../scripts/run-backend-dev-debug.sh",
-    "build": "tsc",
+    "build": "prisma generate && tsc",
     "db:seed": "ts-node-dev --transpile-only src/scripts/seed.ts",
     "db:seed:pharmacy": "ts-node-dev --transpile-only src/scripts/seed-pharmacy-inventory.ts",
     "test:prescription": "ts-node-dev --transpile-only src/scripts/test-prescription-search.ts",
