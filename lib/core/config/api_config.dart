@@ -45,7 +45,7 @@ class ApiConfig {
     );
     // TestFlight/release nunca debe usar LAN o localhost.
     if (kReleaseMode && _isNonPublicApiHost(resolved)) {
-      return 'https://backend-pl89.onrender.com';
+      return 'https://smart-medic-backend-production.up.railway.app';
     }
     return resolved;
   }
