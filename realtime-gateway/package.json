@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "WebSocket gateway (Socket.IO) between Smart Medic clients and API",
   "packageManager": "pnpm@11.1.1",
+  "engines": {
+    "node": "20.x"
+  },
   "main": "dist/index.js",
   "scripts": {
     "start": "node dist/index.js",
