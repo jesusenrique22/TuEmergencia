@@ -2,7 +2,7 @@
   "name": "smart-medic-realtime-gateway",
   "version": "1.0.0",
   "description": "WebSocket gateway (Socket.IO) between Smart Medic clients and API",
-  "packageManager": "pnpm@11.1.1",
+  "packageManager": "pnpm@11.5.1",
   "engines": {
     "node": "20.x"
   },
