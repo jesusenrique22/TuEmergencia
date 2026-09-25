@@ -152,15 +152,28 @@ const LABS = [
 
 export async function syncMaracaiboPlaces(): Promise<void> {
   for (const place of FACILITIES) {
-    await prisma.medicalFacility.updateMany({
+    const data = {
+      address: place.address,
+      city: 'Maracaibo',
+      latitude: place.latitude,
+      longitude: place.longitude,
+      hasEmergencyRoom: true,
+      isActive: true,
+      serviceEnabled: true,
+    };
+    const updated = await prisma.medicalFacility.updateMany({
       where: { name: place.name },
-      data: {
-        address: place.address,
-        city: 'Maracaibo',
-        latitude: place.latitude,
-        longitude: place.longitude,
-      },
+      data,
     });
+    if (updated.count === 0) {
+      await prisma.medicalFacility.create({
+        data: {
+          name: place.name,
+          type: place.name.startsWith('Hospital') ? 'HOSPITAL' : 'CLINIC',
+          ...data,
+        },
+      });
+    }
   }
   for (const place of PHARMACIES) {
     await prisma.pharmacy.updateMany({
