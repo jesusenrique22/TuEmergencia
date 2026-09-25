@@ -4,8 +4,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../../../core/di/service_locator.dart';
-import '../../../../core/geo/geo_math.dart';
 import '../../../../core/geo/geo_point.dart';
+import '../../../../core/geo/route_service.dart';
 import '../../../../core/location/device_location_service.dart';
 import '../../../../core/navigation/app_navigation.dart';
 import '../../../../core/navigation/app_routes.dart';
@@ -47,6 +47,11 @@ class _AmbulanceCheckoutScreenState extends State<AmbulanceCheckoutScreen>
   bool _isRequesting = false;
   String? _locationError;
   GeoPoint? _origin;
+  String? _originAddress;
+  double? _roadKm;
+  int? _roadEta;
+  bool _loadingRoad = false;
+  final _routes = RouteService();
   String _selectedPaymentMethod = 'PAGO_MOVIL';
   PatientPolicy? _activePolicy;
 
@@ -102,6 +107,7 @@ class _AmbulanceCheckoutScreenState extends State<AmbulanceCheckoutScreen>
         _loadingFacilities = false;
         if (clinics.isNotEmpty) _selectedClinic = clinics.first;
       });
+      unawaited(_refreshRoad());
     } catch (e) {
       if (!mounted) return;
       setState(() => _loadingFacilities = false);
@@ -123,6 +129,7 @@ class _AmbulanceCheckoutScreenState extends State<AmbulanceCheckoutScreen>
         _origin = point;
         _loadingLocation = false;
       });
+      unawaited(_refreshRoad());
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -132,12 +139,32 @@ class _AmbulanceCheckoutScreenState extends State<AmbulanceCheckoutScreen>
     }
   }
 
-  double get _estimatedDistance {
+  double get _estimatedDistance => _roadKm ?? 0;
+
+  Future<void> _refreshRoad() async {
+    final origin = _origin;
     final clinic = _selectedClinic?.location;
-    if (clinic == null || _origin == null) return 5.0;
-    final dist = GeoMath.distanceKm(_origin!, clinic);
-    if (dist > 100.0) return 8.4;
-    return dist;
+    if (origin == null || clinic == null) return;
+    if (!inMaracaibo(origin) || !inMaracaibo(clinic)) {
+      if (!mounted) return;
+      setState(() {
+        _roadKm = null;
+        _roadEta = null;
+        _originAddress = null;
+        _loadingRoad = false;
+      });
+      return;
+    }
+    setState(() => _loadingRoad = true);
+    final route = await _routes.fetchDrivingRoute(origin, clinic);
+    final street = await _routes.reverseStreet(origin);
+    if (!mounted) return;
+    setState(() {
+      _roadKm = route.distanceKm;
+      _roadEta = route.etaMinutes;
+      _originAddress = street;
+      _loadingRoad = false;
+    });
   }
 
   double _calculateFare() {
@@ -154,6 +181,14 @@ class _AmbulanceCheckoutScreenState extends State<AmbulanceCheckoutScreen>
       _showError('Esperando tu ubicación...');
       return;
     }
+    if (!inMaracaibo(_origin!)) {
+      _showError('El GPS está fuera de Maracaibo. En el simulador usa una ubicación de la ciudad.');
+      return;
+    }
+    if (_roadKm == null) {
+      _showError('Todavía no hay ruta por calle. Espera un momento.');
+      return;
+    }
 
     setState(() => _isRequesting = true);
     try {
@@ -168,7 +203,7 @@ class _AmbulanceCheckoutScreenState extends State<AmbulanceCheckoutScreen>
         CreateEmergencyParams(
           facilityId: _selectedClinic!.id,
           origin: _origin!,
-          originAddress: _origin.toString(),
+          originAddress: _originAddress,
           symptoms: _symptomsController.text.trim(),
           painLevel: _painLevel.round(),
           medicalHistory: _historyController.text.trim(),
@@ -234,13 +269,7 @@ class _AmbulanceCheckoutScreenState extends State<AmbulanceCheckoutScreen>
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.primary.withValues(alpha: 0.4),
-                      blurRadius: 20,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
+                  
                 ),
                 child: const Icon(Icons.check_rounded, color: Colors.white, size: 44),
               ),
@@ -485,13 +514,7 @@ class _AmbulanceCheckoutScreenState extends State<AmbulanceCheckoutScreen>
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -559,14 +582,7 @@ class _AmbulanceCheckoutScreenState extends State<AmbulanceCheckoutScreen>
                       : _locationError != null
                           ? AppColors.emergency
                           : AppColors.primary,
-                  boxShadow: [
-                    BoxShadow(
-                      color: (_loadingLocation ? Colors.orange : AppColors.primary)
-                          .withValues(alpha: 0.4 + 0.3 * _pulseController.value),
-                      blurRadius: 8 + 4 * _pulseController.value,
-                      spreadRadius: 2,
-                    ),
-                  ],
+                  
                 ),
               ),
             ),
@@ -626,7 +642,10 @@ class _AmbulanceCheckoutScreenState extends State<AmbulanceCheckoutScreen>
                         final clinic = _facilities[i];
                         final isSelected = _selectedClinic?.id == clinic.id;
                         return GestureDetector(
-                          onTap: () => setState(() => _selectedClinic = clinic),
+                          onTap: () {
+                            setState(() => _selectedClinic = clinic);
+                            unawaited(_refreshRoad());
+                          },
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 200),
                             margin: const EdgeInsets.only(bottom: 10),
@@ -733,7 +752,10 @@ class _AmbulanceCheckoutScreenState extends State<AmbulanceCheckoutScreen>
                             .skip(4)
                             .map((c) => DropdownMenuItem(value: c, child: Text(c.name)))
                             .toList(),
-                        onChanged: (v) => setState(() => _selectedClinic = v),
+                        onChanged: (v) {
+                          setState(() => _selectedClinic = v);
+                          unawaited(_refreshRoad());
+                        },
                       ),
                     ],
                   ],
@@ -959,13 +981,7 @@ class _AmbulanceCheckoutScreenState extends State<AmbulanceCheckoutScreen>
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.2),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        
       ),
       child: Column(
         children: [
@@ -999,7 +1015,9 @@ class _AmbulanceCheckoutScreenState extends State<AmbulanceCheckoutScreen>
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    '~${dist.toStringAsFixed(1)} km',
+                    _roadKm == null
+                        ? 'Ruta…'
+                        : '${dist.toStringAsFixed(1)} km · ${_roadEta ?? '—'} min',
                     style: const TextStyle(
                       color: AppColors.info,
                       fontSize: 12,
@@ -1143,15 +1161,7 @@ class _AmbulanceCheckoutScreenState extends State<AmbulanceCheckoutScreen>
                     color: isSelected ? AppColors.primary : AppColors.border,
                     width: isSelected ? 2 : 1,
                   ),
-                  boxShadow: isSelected
-                      ? [
-                          BoxShadow(
-                            color: AppColors.primary.withValues(alpha: 0.3),
-                            blurRadius: 8,
-                            offset: const Offset(0, 4),
-                          ),
-                        ]
-                      : null,
+                  
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -1188,13 +1198,7 @@ class _AmbulanceCheckoutScreenState extends State<AmbulanceCheckoutScreen>
       ),
       decoration: BoxDecoration(
         color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 20,
-            offset: const Offset(0, -8),
-          ),
-        ],
+        
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,

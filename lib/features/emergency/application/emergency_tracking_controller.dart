@@ -126,13 +126,27 @@ class EmergencyTrackingController extends ChangeNotifier {
 
   void _applyLocation(EmergencyLocationUpdate update) {
     if (emergency == null) return;
+    if (update.isPatient) {
+      emergency = emergency!.copyWith(
+        origin: update.location,
+        etaMinutes: update.etaMinutes ?? emergency!.etaMinutes,
+      );
+      final rawDist = update.distanceRemainingKm ??
+          _distanceToDestination(emergency!.ambulanceLocation ?? update.location);
+      distanceRemainingKm =
+          rawDist != null && rawDist <= 120 ? rawDist : null;
+      notifyListeners();
+      return;
+    }
     _appendTrailPoint(update.location);
     emergency = emergency!.copyWith(
       ambulanceLocation: update.location,
       etaMinutes: update.etaMinutes ?? emergency!.etaMinutes,
     );
-    distanceRemainingKm =
+    final rawDist =
         update.distanceRemainingKm ?? _distanceToDestination(update.location);
+    distanceRemainingKm =
+        rawDist != null && rawDist <= 120 ? rawDist : null;
     notifyListeners();
   }
 
@@ -270,12 +284,17 @@ class DriverLocationPublisher {
     } catch (_) {}
 
     try {
+      debugPrint(
+        '[GPS] publicando ${point.latitude.toStringAsFixed(5)},${point.longitude.toStringAsFixed(5)} emergencia=${assignment.id}',
+      );
       await _repository.updateDriverLocation(
         emergencyId: assignment.id,
         location: point,
         etaMinutes: etaMinutes,
       );
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[GPS] error publicando: $e');
+    }
   }
 
   Future<void> stop() async {

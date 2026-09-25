@@ -19,7 +19,7 @@ import {
   listFacilityEmergencies,
   listPatientEmergencies,
   listPendingFacilityRequests,
-  updateAmbulanceLocation,
+  updateEmergencyLocation,
   updateAmbulanceUnit,
   updateEmergencyStatus,
 } from '../services/emergency.service';
@@ -145,9 +145,10 @@ export const patchEmergencyLocation = async (req: AuthRequest, res: Response) =>
     return res.status(400).json({ error: 'latitude y longitude son obligatorios' });
   }
   try {
-    const payload = await updateAmbulanceLocation(
+    const payload = await updateEmergencyLocation(
       req.params.id,
       req.user!.id,
+      req.user!.role,
       Number(latitude),
       Number(longitude),
       etaMinutes != null ? Number(etaMinutes) : undefined,

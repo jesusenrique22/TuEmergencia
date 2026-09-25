@@ -48,7 +48,16 @@ router.patch(
 router.get('/:id', getEmergency);
 router.patch('/:id/status', patchEmergencyStatus);
 router.patch('/:id/accept', authorize(UserRole.AMBULANCE_DRIVER, UserRole.PARAMEDIC, UserRole.AMBULANCE_NURSE), acceptEmergency);
-router.patch('/:id/location', authorize(UserRole.AMBULANCE_DRIVER), patchEmergencyLocation);
+router.patch(
+  '/:id/location',
+  authorize(
+    UserRole.PATIENT,
+    UserRole.AMBULANCE_DRIVER,
+    UserRole.PARAMEDIC,
+    UserRole.AMBULANCE_NURSE,
+  ),
+  patchEmergencyLocation,
+);
 router.post('/:id/cancel', authorize(UserRole.PATIENT), cancelEmergency);
 router.get('/:id/messages', getEmergencyChatMessages);
 router.post('/:id/messages', postEmergencyChatMessage);

@@ -42,8 +42,6 @@ class _AmbulanceCrewDashboardState extends State<AmbulanceCrewDashboard>
   late final AnimationController _slideController;
   late final AnimationController _alertPulseController;
 
-  bool get _isDriver => AppSession.activeRole == Role.driver;
-
   String get _panelTitle {
     return switch (AppSession.activeRole) {
       Role.paramedic => 'Panel paramédico',
@@ -307,7 +305,7 @@ class _AmbulanceCrewDashboardState extends State<AmbulanceCrewDashboard>
                       _buildPendingTab(),
                     ],
                   ),
-        floatingActionButton: _isDriver && active.isNotEmpty
+        floatingActionButton: active.isNotEmpty
             ? FloatingActionButton.extended(
                 onPressed: () => _startGps(active.first),
                 backgroundColor: AppColors.primary,
@@ -413,13 +411,7 @@ class _AmbulanceCrewDashboardState extends State<AmbulanceCrewDashboard>
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: statusColor.withValues(alpha: 0.15),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        
         border: Border.all(color: statusColor.withValues(alpha: 0.3)),
       ),
       child: ClipRRect(
@@ -596,14 +588,7 @@ class _AmbulanceCrewDashboardState extends State<AmbulanceCrewDashboard>
               end: Alignment.bottomRight,
             ),
             borderRadius: BorderRadius.circular(24),
-            boxShadow: [
-              BoxShadow(
-                color: (isUrgent ? AppColors.emergency : const Color(0xFF334155))
-                    .withValues(alpha: 0.4 + 0.2 * _pulseController.value),
-                blurRadius: 20 + 5 * _pulseController.value,
-                offset: const Offset(0, 8),
-              ),
-            ],
+            
           ),
           child: child,
         );
@@ -628,15 +613,7 @@ class _AmbulanceCrewDashboardState extends State<AmbulanceCrewDashboard>
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: isUrgent ? const Color(0xFFFCA5A5) : Colors.white70,
-                        boxShadow: [
-                          BoxShadow(
-                            color: isUrgent
-                                ? Colors.red.withValues(alpha: 0.6 + 0.4 * _pulseController.value)
-                                : Colors.white.withValues(alpha: 0.3),
-                            blurRadius: 8,
-                            spreadRadius: 2,
-                          ),
-                        ],
+                        
                       ),
                     ),
                   ),
@@ -963,7 +940,7 @@ class _AmbulanceCrewDashboardState extends State<AmbulanceCrewDashboard>
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
                         );
-                        if (_isDriver) await _startGps(updated);
+                        await _startGps(updated);
                         _openEmergency(updated);
                       } catch (e) {
                         if (!mounted) return;
@@ -1050,8 +1027,6 @@ class _AmbulanceEmergencyDetailScreenState
   DriverLocationPublisher? _publisher;
   bool _updatingStatus = false;
 
-  bool get _isDriver => AppSession.activeRole == Role.driver;
-
   @override
   void initState() {
     super.initState();
@@ -1064,7 +1039,7 @@ class _AmbulanceEmergencyDetailScreenState
 
   Future<void> _startTracking() async {
     await _controller.start(widget.emergencyId);
-    if (!mounted || !_isDriver) return;
+    if (!mounted) return;
     final em = _controller.emergency;
     if (em != null && !em.status.isTerminal) {
       _publisher ??= sl<DriverLocationPublisher>();
@@ -1181,12 +1156,7 @@ class _AmbulanceEmergencyDetailScreenState
                       decoration: BoxDecoration(
                         color: Colors.white,
                         shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.2),
-                            blurRadius: 8,
-                          ),
-                        ],
+                        
                       ),
                       child: const Icon(Icons.arrow_back_ios_new, size: 18, color: AppColors.textPrimary),
                     ),

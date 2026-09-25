@@ -22,6 +22,7 @@ class AmbulanceTracking extends StatefulWidget {
 
 class _AmbulanceTrackingState extends State<AmbulanceTracking> {
   late final EmergencyTrackingController _controller;
+  DriverLocationPublisher? _patientPublisher;
 
   @override
   void initState() {
@@ -29,7 +30,15 @@ class _AmbulanceTrackingState extends State<AmbulanceTracking> {
     _controller = sl<EmergencyTrackingController>();
     _controller.addListener(_onChanged);
     unawaited(AppRealtime.connectIfNeeded());
-    unawaited(_controller.start(widget.emergencyId));
+    unawaited(_start());
+  }
+
+  Future<void> _start() async {
+    await _controller.start(widget.emergencyId);
+    final em = _controller.emergency;
+    if (!mounted || em == null || em.status.isTerminal) return;
+    _patientPublisher ??= sl<DriverLocationPublisher>();
+    await _patientPublisher!.start(em);
   }
 
   void _onChanged() {
@@ -40,6 +49,7 @@ class _AmbulanceTrackingState extends State<AmbulanceTracking> {
   void dispose() {
     _controller.removeListener(_onChanged);
     _controller.dispose();
+    unawaited(_patientPublisher?.stop());
     super.dispose();
   }
 
@@ -134,8 +144,8 @@ class _TopBarButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      elevation: 4,
-      shape: const CircleBorder(),
+      elevation: 0,
+      shape: const CircleBorder(side: BorderSide(color: AppColors.border)),
       color: Colors.white,
       child: InkWell(
         customBorder: const CircleBorder(),
@@ -173,13 +183,7 @@ class _PatientTrackingSheet extends StatelessWidget {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.12),
-                blurRadius: 20,
-                offset: const Offset(0, -6),
-              ),
-            ],
+            
           ),
           child: ListView(
             controller: scrollController,

@@ -6,11 +6,45 @@ import 'package:http/http.dart' as http;
 import 'geo_math.dart';
 import 'geo_point.dart';
 
+/// Maracaibo y el sur inmediato (Hospital General del Sur).
+bool inMaracaibo(GeoPoint point) {
+  return point.latitude >= 10.55 &&
+      point.latitude <= 10.73 &&
+      point.longitude >= -71.78 &&
+      point.longitude <= -71.50;
+}
+
 /// Rutas por calle vía OSRM (gratuito, sin API key).
 class RouteService {
   RouteService({http.Client? client}) : _client = client ?? http.Client();
 
   final http.Client _client;
+
+  /// Calle real en Maracaibo (Nominatim). Null si el punto está fuera.
+  Future<String?> reverseStreet(GeoPoint point) async {
+    if (!point.isValid || !inMaracaibo(point)) return null;
+    try {
+      final url = Uri.parse(
+        'https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18'
+        '&lat=${point.latitude}&lon=${point.longitude}',
+      );
+      final resp = await _client.get(
+        url,
+        headers: const {'User-Agent': 'TuEmergencia/1.0 (Maracaibo)'},
+      ).timeout(const Duration(seconds: 8));
+      if (resp.statusCode != 200) return null;
+      final body = jsonDecode(resp.body) as Map<String, dynamic>;
+      final name = (body['display_name'] as String?)?.trim();
+      if (name == null || name.isEmpty) return null;
+      if (!name.toLowerCase().contains('maracaibo') &&
+          !name.toLowerCase().contains('zulia')) {
+        return null;
+      }
+      return name;
+    } catch (_) {
+      return null;
+    }
+  }
 
   Future<RouteResult> fetchDrivingRoute(GeoPoint from, GeoPoint to) async {
     if (!from.isValid || !to.isValid) {
@@ -26,12 +60,14 @@ class RouteService {
       );
       final resp = await _client.get(url).timeout(const Duration(seconds: 10));
       if (resp.statusCode != 200) {
+        if (inMaracaibo(from) && inMaracaibo(to)) return const RouteResult([]);
         return RouteResult.straightLineResult(from, to);
       }
 
       final body = jsonDecode(resp.body) as Map<String, dynamic>;
       final routes = body['routes'] as List<dynamic>?;
       if (routes == null || routes.isEmpty) {
+        if (inMaracaibo(from) && inMaracaibo(to)) return const RouteResult([]);
         return RouteResult.straightLineResult(from, to);
       }
 
@@ -63,6 +99,7 @@ class RouteService {
         etaMinutes: etaMinutes,
       );
     } catch (_) {
+      if (inMaracaibo(from) && inMaracaibo(to)) return const RouteResult([]);
       return RouteResult.straightLineResult(from, to);
     }
   }

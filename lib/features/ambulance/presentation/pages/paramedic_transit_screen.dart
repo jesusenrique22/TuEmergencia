@@ -314,13 +314,7 @@ class _ParamedicTransitScreenState extends State<ParamedicTransitScreen> {
       decoration: BoxDecoration(
         color: AppColors.primary,
         borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.3),
-            blurRadius: 15,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        
       ),
       child: Row(
         children: [

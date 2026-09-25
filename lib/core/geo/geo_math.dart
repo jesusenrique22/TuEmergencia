@@ -36,8 +36,9 @@ class GeoMath {
     );
   }
 
-  static int estimateEtaMinutes(double distanceKm, {double avgSpeedKmh = 30}) {
-    return math.max(3, (distanceKm / avgSpeedKmh * 60).round());
+  static int estimateEtaMinutes(double distanceKm, {double? avgSpeedKmh}) {
+    final speed = avgSpeedKmh ?? (distanceKm <= 20 ? 45.0 : 35.0);
+    return math.max(3, (distanceKm / speed * 60).round());
   }
 
   /// Rumbo en grados (0 = norte, 90 = este) entre dos puntos.

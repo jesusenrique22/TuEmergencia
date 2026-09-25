@@ -227,6 +227,7 @@ class EmergencyRequest {
   EmergencyRequest copyWith({
     EmergencyStatus? status,
     GeoPoint? ambulanceLocation,
+    GeoPoint? origin,
     int? etaMinutes,
   }) {
     return EmergencyRequest(
@@ -235,7 +236,7 @@ class EmergencyRequest {
       facilityId: facilityId,
       facility: facility,
       ambulance: ambulance,
-      origin: origin,
+      origin: origin ?? this.origin,
       originAddress: originAddress,
       symptoms: symptoms,
       painLevel: painLevel,
@@ -255,13 +256,18 @@ class EmergencyLocationUpdate {
   final GeoPoint location;
   final int? etaMinutes;
   final double? distanceRemainingKm;
+  /// `ambulance` o `patient`.
+  final String source;
 
   const EmergencyLocationUpdate({
     required this.emergencyRequestId,
     required this.location,
     this.etaMinutes,
     this.distanceRemainingKm,
+    this.source = 'ambulance',
   });
+
+  bool get isPatient => source == 'patient';
 
   factory EmergencyLocationUpdate.fromPayload(Map<String, dynamic> json) {
     return EmergencyLocationUpdate(
@@ -272,6 +278,7 @@ class EmergencyLocationUpdate {
       ),
       etaMinutes: json['etaMinutes'] as int?,
       distanceRemainingKm: JsonHelpers.doubleFromJson(json['distanceRemainingKm']),
+      source: (json['source'] as String?) ?? 'ambulance',
     );
   }
 }

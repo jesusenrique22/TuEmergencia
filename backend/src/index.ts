@@ -4,6 +4,7 @@ import express from 'express';
 import path from 'path';
 
 import { connectDatabase } from './config/db';
+import { syncMaracaiboPlaces } from './services/maracaibo.geo';
 import { createCorsMiddleware } from './config/cors';
 import internalRealtimeRoutes from './routes/internalRealtime.routes';
 import authRoutes from './routes/auth.routes';
@@ -74,6 +75,9 @@ app.use('/internal/realtime', internalRealtimeRoutes);
 async function start() {
   try {
     await connectDatabase();
+    await syncMaracaiboPlaces().catch((error) => {
+      console.error('No se pudieron sincronizar lugares de Maracaibo:', error);
+    });
     app.listen(Number(PORT), '0.0.0.0', () => {
       console.log(`Smart Medic API en puerto ${PORT} (0.0.0.0, REST)`);
       console.log(

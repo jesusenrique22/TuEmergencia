@@ -129,15 +129,7 @@ class _StepChip extends StatelessWidget {
             border: current
                 ? Border.all(color: AppColors.primary, width: 2)
                 : null,
-            boxShadow: current
-                ? [
-                    BoxShadow(
-                      color: AppColors.primary.withValues(alpha: 0.35),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ]
-                : null,
+            
           ),
           child: Icon(
             icon,
@@ -356,13 +348,7 @@ class SearchingAmbulanceOverlay extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(28),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.15),
-              blurRadius: 24,
-              offset: const Offset(0, -4),
-            ),
-          ],
+          
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,

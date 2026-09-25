@@ -148,27 +148,24 @@ class _LiveAmbulanceTrackingMapState extends State<LiveAmbulanceTrackingMap>
     final destination = EmergencyNavigation.destination(widget.request);
     final toClinic = EmergencyNavigation.routesToClinic(widget.request.status);
     final ambulance = _displayAmbulance ?? widget.request.ambulanceLocation;
+    final patient = widget.request.origin;
 
     final markers = <Marker>[
-      _destinationMarker(
-        point: destination,
-        label: toClinic ? 'Clínica' : 'Paciente',
-        icon: toClinic ? Icons.local_hospital_rounded : Icons.person_pin_circle_rounded,
-        color: toClinic ? AppColors.primary : AppColors.emergency,
-      ),
-    ];
-
-    if (!toClinic && destination.latitude != widget.request.origin.latitude) {
-      markers.add(
+      if (patient.isValid)
         _destinationMarker(
-          point: widget.request.origin,
-          label: 'Origen',
-          icon: Icons.location_on_rounded,
+          point: patient,
+          label: 'Paciente',
+          icon: Icons.person_pin_circle_rounded,
           color: AppColors.emergency,
-          size: 36,
         ),
-      );
-    }
+      if (toClinic)
+        _destinationMarker(
+          point: destination,
+          label: 'Clínica',
+          icon: Icons.local_hospital_rounded,
+          color: AppColors.primary,
+        ),
+    ];
 
     if (ambulance != null && ambulance.isValid) {
       markers.add(
@@ -225,8 +222,12 @@ class _LiveAmbulanceTrackingMapState extends State<LiveAmbulanceTrackingMap>
 
     layers.add(MarkerLayer(markers: markers));
 
-    final eta = widget.request.etaMinutes;
     final dist = widget.distanceRemainingKm;
+    final int? eta = dist != null && dist <= 120
+        ? GeoMath.estimateEtaMinutes(dist)
+        : (widget.request.etaMinutes != null && widget.request.etaMinutes! < 180
+            ? widget.request.etaMinutes
+            : null);
 
     return Stack(
       children: [
@@ -297,13 +298,7 @@ class _LiveAmbulanceTrackingMapState extends State<LiveAmbulanceTrackingMap>
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(8),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.12),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
+              
             ),
             child: Text(
               label,
@@ -360,13 +355,7 @@ class _AmbulanceMarker extends StatelessWidget {
                   color: Colors.white,
                   shape: BoxShape.circle,
                   border: Border.all(color: AppColors.emergency, width: 3),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.emergency.withValues(alpha: 0.35),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
+                  
                 ),
                 child: const Icon(
                   Icons.local_shipping_rounded,
@@ -398,10 +387,12 @@ class _NavigationBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      elevation: 6,
-      shadowColor: Colors.black26,
-      borderRadius: BorderRadius.circular(16),
+      elevation: 0,
       color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: AppColors.border),
+      ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
@@ -439,7 +430,9 @@ class _NavigationBanner extends StatelessWidget {
                   Text(
                     etaMinutes != null
                         ? 'Llegada ~ ${GeoMath.formatEta(etaMinutes)}'
-                        : 'Calculando ETA…',
+                        : (distanceKm == null || distanceKm! > 120)
+                            ? 'Ubicación lejos — GPS en Maracaibo'
+                            : 'Calculando ETA…',
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -490,8 +483,12 @@ class _MapFab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      elevation: 4,
-      shape: const CircleBorder(),
+      elevation: 0,
+      shape: CircleBorder(
+        side: BorderSide(
+          color: selected ? AppColors.primary : AppColors.border,
+        ),
+      ),
       color: selected ? AppColors.primary : Colors.white,
       child: InkWell(
         customBorder: const CircleBorder(),

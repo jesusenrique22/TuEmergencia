@@ -6,10 +6,15 @@ import {
 } from '../types/enums';
 import { emitToFacility, pushRealtimeBroadcasts } from '../socket/realtimeGatewayClient';
 import type { RealtimeBroadcast } from './realtimeOrchestration.service';
+import { drivingLeg, inMaracaibo, streetAddress } from './maracaibo.geo';
 
 const BASE_FARE = 25;
 const PER_KM_RATE = 2.5;
 const EARTH_RADIUS_KM = 6371;
+function isFakeSimulatorGps(lat: number, lng: number): boolean {
+  return haversineKm(lat, lng, 37.785834, -122.406417) < 2
+    || haversineKm(lat, lng, 37.3349, -122.009) < 3;
+}
 
 function haversineKm(
   lat1: number,
@@ -24,10 +29,6 @@ function haversineKm(
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
   return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-function estimateEtaMinutes(distanceKm: number): number {
-  return Math.max(3, Math.round((distanceKm / 30) * 60));
 }
 
 export function mapEmergencyRequest(
@@ -162,17 +163,27 @@ export async function createEmergencyRequest(params: {
     throw new Error('Clínica no encontrada o no disponible');
   }
 
-  let distanceKm = 5;
-  if (facility.latitude != null && facility.longitude != null) {
-    distanceKm = haversineKm(
-      params.originLat,
-      params.originLng,
-      facility.latitude,
-      facility.longitude,
-    );
+  if (!inMaracaibo(params.originLat, params.originLng)) {
+    throw new Error('La ambulancia solo cubre Maracaibo. Activa el GPS dentro de la ciudad.');
   }
-  const quotedCost = Math.round((BASE_FARE + distanceKm * PER_KM_RATE) * 100) / 100;
-  const etaMinutes = estimateEtaMinutes(distanceKm);
+  if (facility.latitude == null || facility.longitude == null || !inMaracaibo(facility.latitude, facility.longitude)) {
+    throw new Error('La clínica no está en Maracaibo');
+  }
+
+  const road = await drivingLeg(
+    params.originLat,
+    params.originLng,
+    facility.latitude,
+    facility.longitude,
+  );
+  if (!road) {
+    throw new Error('No se pudo calcular la ruta por calle en Maracaibo');
+  }
+  const quotedCost = Math.round((BASE_FARE + road.km * PER_KM_RATE) * 100) / 100;
+  const etaMinutes = road.etaMinutes;
+  const originAddress =
+    (await streetAddress(params.originLat, params.originLng)) ??
+    (params.originAddress && !/^-?\d/.test(params.originAddress) ? params.originAddress : null);
 
   const request = await prisma.emergencyRequest.create({
     data: {
@@ -180,7 +191,7 @@ export async function createEmergencyRequest(params: {
       facilityId: params.facilityId,
       originLat: params.originLat,
       originLng: params.originLng,
-      originAddress: params.originAddress,
+      originAddress,
       symptoms: params.symptoms,
       painLevel: params.painLevel,
       medicalHistory: params.medicalHistory,
@@ -215,15 +226,24 @@ export async function createEmergencyRequest(params: {
 }
 
 export async function listPendingFacilityRequests(userId: string) {
-  const facilityId = await getDriverFacilityRoom(userId);
-  if (!facilityId) {
+  const unit = await prisma.ambulanceUnit.findFirst({
+    where: {
+      isActive: true,
+      OR: [{ driverId: userId }, { paramedicId: userId }, { nurseId: userId }],
+    },
+    include: { facility: true },
+  });
+  if (!unit) {
     throw new Error('El usuario no pertenece a ninguna clínica o unidad de ambulancia activa');
   }
 
+  const city = unit.facility?.city?.trim();
   const rows = await prisma.emergencyRequest.findMany({
     where: {
-      facilityId,
       status: EmergencyRequestStatus.REQUESTED,
+      ...(city
+        ? { facility: { city } }
+        : { facilityId: unit.facilityId }),
     },
     include: emergencyInclude,
     orderBy: { requestedAt: 'desc' },
@@ -252,10 +272,20 @@ export async function acceptEmergencyRequest(requestId: string, driverId: string
     throw new Error('La solicitud ya fue tomada por otra unidad o cancelada');
   }
 
+  const facility = await prisma.medicalFacility.findUnique({
+    where: { id: unit.facilityId },
+  });
+  const startLat = facility?.latitude ?? unit.latitude ?? request.originLat;
+  const startLng = facility?.longitude ?? unit.longitude ?? request.originLng;
+
   const updated = await prisma.$transaction(async (tx) => {
     await tx.ambulanceUnit.update({
       where: { id: unit.id },
-      data: { status: AmbulanceUnitStatus.DISPATCHED },
+      data: {
+        status: AmbulanceUnitStatus.DISPATCHED,
+        latitude: startLat,
+        longitude: startLng,
+      },
     });
 
     return tx.emergencyRequest.update({
@@ -263,8 +293,8 @@ export async function acceptEmergencyRequest(requestId: string, driverId: string
       data: {
         ambulanceUnitId: unit.id,
         status: EmergencyRequestStatus.DISPATCHED,
-        ambulanceLat: unit.latitude ?? request.originLat,
-        ambulanceLng: unit.longitude ?? request.originLng,
+        ambulanceLat: startLat,
+        ambulanceLng: startLng,
       },
       include: emergencyInclude,
     });
@@ -462,9 +492,16 @@ export async function updateEmergencyStatus(
   return mapped;
 }
 
-export async function updateAmbulanceLocation(
+const CREW_ROLES = new Set<UserRole>([
+  UserRole.AMBULANCE_DRIVER,
+  UserRole.PARAMEDIC,
+  UserRole.AMBULANCE_NURSE,
+]);
+
+export async function updateEmergencyLocation(
   requestId: string,
-  driverId: string,
+  userId: string,
+  role: UserRole,
   latitude: number,
   longitude: number,
   etaMinutes?: number,
@@ -472,14 +509,41 @@ export async function updateAmbulanceLocation(
   const request = await prisma.emergencyRequest.findFirst({
     where: {
       id: requestId,
-      ambulance: { driverId },
       status: {
         notIn: [EmergencyRequestStatus.COMPLETED, EmergencyRequestStatus.CANCELLED],
       },
     },
     include: { ambulance: true, facility: true },
   });
-  if (!request) throw new Error('Solicitud no encontrada o no asignada a este conductor');
+  if (!request) throw new Error('Solicitud no encontrada o ya finalizada');
+
+  const isPatient = role === UserRole.PATIENT && request.patientId === userId;
+  const isAssignedCrew =
+    CREW_ROLES.has(role) &&
+    !!request.ambulance &&
+    [request.ambulance.driverId, request.ambulance.paramedicId, request.ambulance.nurseId]
+      .filter(Boolean)
+      .includes(userId);
+
+  if (!isPatient && !isAssignedCrew) {
+    throw new Error('No autorizado para publicar ubicación de esta emergencia');
+  }
+
+  if (!isPatient && (isFakeSimulatorGps(latitude, longitude))) {
+    return {
+      emergencyRequestId: requestId,
+      source: 'ambulance',
+      latitude: request.ambulanceLat ?? request.originLat,
+      longitude: request.ambulanceLng ?? request.originLng,
+      etaMinutes: request.etaMinutes,
+      distanceRemainingKm: request.ambulanceLat != null
+        ? Math.round(haversineKm(request.ambulanceLat, request.ambulanceLng ?? 0, request.originLat, request.originLng) * 100) / 100
+        : null,
+      ignored: true,
+    };
+  }
+
+  const source = isPatient ? 'patient' : 'ambulance';
 
   const toClinic = [
     EmergencyRequestStatus.PATIENT_ONBOARD,
@@ -489,41 +553,62 @@ export async function updateAmbulanceLocation(
 
   const destLat = toClinic && request.facility?.latitude != null
     ? request.facility.latitude
-    : request.originLat;
+    : isPatient
+      ? latitude
+      : request.originLat;
   const destLng = toClinic && request.facility?.longitude != null
     ? request.facility.longitude
-    : request.originLng;
+    : isPatient
+      ? longitude
+      : request.originLng;
 
-  const distanceRemainingKm =
-    Math.round(haversineKm(latitude, longitude, destLat, destLng) * 100) / 100;
-  const computedEta =
-    etaMinutes ?? estimateEtaMinutes(distanceRemainingKm);
+  const fromLat = isPatient ? (request.ambulanceLat ?? latitude) : latitude;
+  const fromLng = isPatient ? (request.ambulanceLng ?? longitude) : longitude;
+  const road = await drivingLeg(fromLat, fromLng, destLat, destLng);
+  const distanceRemainingKm = road?.km ?? null;
+  const computedEta = road?.etaMinutes ?? request.etaMinutes;
+
+  const patientMovedKm = isPatient
+    ? haversineKm(request.originLat, request.originLng, latitude, longitude)
+    : 0;
+  const nextAddress =
+    isPatient && patientMovedKm > 0.08
+      ? (await streetAddress(latitude, longitude)) ?? request.originAddress
+      : request.originAddress;
 
   const now = new Date();
   await prisma.$transaction([
     prisma.emergencyRequest.update({
       where: { id: requestId },
-      data: {
-        ambulanceLat: latitude,
-        ambulanceLng: longitude,
-        etaMinutes: computedEta,
-      },
+      data: isPatient
+        ? {
+            originLat: latitude,
+            originLng: longitude,
+            ...(nextAddress ? { originAddress: nextAddress } : {}),
+            ...(computedEta != null ? { etaMinutes: computedEta } : {}),
+          }
+        : {
+            ambulanceLat: latitude,
+            ambulanceLng: longitude,
+            ...(computedEta != null ? { etaMinutes: computedEta } : {}),
+          },
     }),
-    prisma.ambulanceUnit.update({
-      where: { id: request.ambulanceUnitId! },
-      data: {
-        latitude,
-        longitude,
-        lastSeenAt: now,
-      },
-    }),
+    ...(isAssignedCrew && request.ambulanceUnitId
+      ? [
+          prisma.ambulanceUnit.update({
+            where: { id: request.ambulanceUnitId },
+            data: { latitude, longitude, lastSeenAt: now },
+          }),
+        ]
+      : []),
   ]);
 
   const payload = {
     emergencyRequestId: requestId,
+    source,
     latitude,
     longitude,
-    etaMinutes: computedEta,
+    etaMinutes: computedEta ?? request.etaMinutes,
     distanceRemainingKm,
   };
 
@@ -546,6 +631,24 @@ export async function updateAmbulanceLocation(
   ]);
 
   return payload;
+}
+
+/** @deprecated usar updateEmergencyLocation */
+export async function updateAmbulanceLocation(
+  requestId: string,
+  driverId: string,
+  latitude: number,
+  longitude: number,
+  etaMinutes?: number,
+) {
+  return updateEmergencyLocation(
+    requestId,
+    driverId,
+    UserRole.AMBULANCE_DRIVER,
+    latitude,
+    longitude,
+    etaMinutes,
+  );
 }
 
 export async function cancelEmergencyRequest(requestId: string, patientId: string) {

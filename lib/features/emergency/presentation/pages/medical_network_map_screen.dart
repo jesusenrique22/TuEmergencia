@@ -188,9 +188,7 @@ class _MedicalNetworkMapScreenState extends State<MedicalNetworkMapScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
-          BoxShadow(color: Colors.black12, blurRadius: 16, offset: Offset(0, -4)),
-        ],
+        
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,

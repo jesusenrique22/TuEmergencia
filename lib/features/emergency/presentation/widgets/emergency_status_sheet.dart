@@ -34,13 +34,7 @@ class EmergencyStatusSheet extends StatelessWidget {
       decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black12,
-            blurRadius: 25,
-            offset: Offset(0, -8),
-          ),
-        ],
+        
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -251,13 +245,7 @@ class _RadarRippleLoaderState extends State<RadarRippleLoader>
                       end: Alignment.bottomRight,
                     ),
                     shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFFEF4444).withValues(alpha: 0.4),
-                        blurRadius: 15,
-                        spreadRadius: 2,
-                      ),
-                    ],
+                    
                   ),
                   child: const Icon(
                     Icons.airport_shuttle_rounded,
