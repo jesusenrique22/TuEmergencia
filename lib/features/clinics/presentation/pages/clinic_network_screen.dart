@@ -1,21 +1,60 @@
 import 'package:flutter/material.dart';
+
+import '../../../../core/di/service_locator.dart';
 import '../../../../core/navigation/app_routes.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/app_design.dart';
 import '../../../../core/widgets/experience/experience_marketplace_shell.dart';
 import '../../../../core/widgets/promo/promo_models.dart';
-import '../../domain/models/clinic_models.dart';
-import '../../domain/models/clinic_data_mock.dart';
+import '../../../catalog/domain/models/catalog_models.dart';
+import '../../../catalog/domain/repositories/catalog_repository.dart';
 
-class ClinicNetworkScreen extends StatelessWidget {
+class ClinicNetworkScreen extends StatefulWidget {
   const ClinicNetworkScreen({super.key});
+
+  @override
+  State<ClinicNetworkScreen> createState() => _ClinicNetworkScreenState();
+}
+
+class _ClinicNetworkScreenState extends State<ClinicNetworkScreen> {
+  final _catalog = sl<CatalogRepository>();
+  List<MedicalFacility> _clinics = [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final clinics = await _catalog.listActiveFacilities();
+      if (!mounted) return;
+      setState(() {
+        _clinics = clinics;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return ExperienceMarketplaceShell(
       title: 'Clínicas aliadas',
-      subtitle: 'Urgencias, seguros aceptados y admisión coordinada.',
-      badge: '${ClinicDataMock.clinics.length} centros',
+      subtitle: 'Urgencias en Maracaibo, seguros y admisión coordinada.',
+      badge: _loading ? '…' : '${_clinics.length} centros',
       icon: Icons.local_hospital_rounded,
       gradient: AppColors.clinicGradient,
       promos: PromoMockData.clinicPromos,
@@ -26,20 +65,45 @@ class ClinicNetworkScreen extends StatelessWidget {
         icon: const Icon(Icons.map_rounded),
         label: const Text('Ver mapa'),
       ),
-      children: ClinicDataMock.clinics
-          .map((clinic) => _buildClinicCard(context, clinic))
-          .toList(),
+      children: [
+        if (_loading)
+          const Padding(
+            padding: EdgeInsets.all(24),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else if (_error != null)
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                Text(_error!, style: const TextStyle(color: AppColors.emergency)),
+                TextButton(onPressed: _load, child: const Text('Reintentar')),
+              ],
+            ),
+          )
+        else if (_clinics.isEmpty)
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text(
+              'No hay clínicas activas en Maracaibo. Actualiza la app o contacta soporte.',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
+          )
+        else
+          ..._clinics.map((clinic) => _buildClinicCard(context, clinic)),
+      ],
     );
   }
 
-  Widget _buildClinicCard(BuildContext context, AlliedClinic clinic) {
+  Widget _buildClinicCard(BuildContext context, MedicalFacility clinic) {
     return AppMarketplaceTile(
       title: clinic.name,
-      subtitle: clinic.location.address,
-      imageUrl: clinic.logoUrl,
+      subtitle: clinic.address.isNotEmpty
+          ? clinic.address
+          : (clinic.city ?? 'Maracaibo'),
       icon: Icons.business_rounded,
       color: AppColors.primary,
-      actionLabel: 'Coordinar',
+      actionLabel: 'Ver mapa',
       chips: [
         AppStatusPill(
           label: clinic.hasEmergencyRoom
@@ -49,11 +113,6 @@ class ClinicNetworkScreen extends StatelessWidget {
           icon: clinic.hasEmergencyRoom
               ? Icons.emergency_rounded
               : Icons.local_hospital_rounded,
-        ),
-        AppStatusPill(
-          label: '${clinic.acceptedInsurances.length} seguros',
-          color: AppColors.secondary,
-          icon: Icons.verified_user_rounded,
         ),
       ],
       onTap: () => Navigator.pushNamed(context, AppRoutes.medicalNetworkMap),

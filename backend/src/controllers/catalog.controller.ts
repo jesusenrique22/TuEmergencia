@@ -5,7 +5,7 @@ import { getAvailableSlots } from '../services/slots.service';
 import { getDoctorConsultationDuration } from '../services/doctorDuration.service';
 import { doctorProfileInclude, mapDoctorProfile } from '../utils/prismaMappers';
 import { omitPassword, toApiDoc } from '../utils/apiDoc';
-import { inMaracaibo } from '../services/maracaibo.geo';
+import { ensureMaracaiboCatalog, inMaracaibo } from '../services/maracaibo.geo';
 
 function onlyMaracaibo<T extends { latitude: number | null; longitude: number | null }>(
   rows: T[],
@@ -23,12 +23,26 @@ export const listSpecialties = async (_req: Request, res: Response) => {
   res.json(specialties.map(toApiDoc));
 };
 
-export const listFacilities = async (_req: Request, res: Response) => {
-  const facilities = await prisma.medicalFacility.findMany({
+async function loadMaracaiboFacilities() {
+  let facilities = await prisma.medicalFacility.findMany({
     where: { isActive: true, serviceEnabled: true },
     orderBy: { name: 'asc' },
   });
-  res.json(onlyMaracaibo(facilities).map(toApiDoc));
+  let maracaibo = onlyMaracaibo(facilities);
+  if (maracaibo.length === 0) {
+    await ensureMaracaiboCatalog();
+    facilities = await prisma.medicalFacility.findMany({
+      where: { isActive: true, serviceEnabled: true },
+      orderBy: { name: 'asc' },
+    });
+    maracaibo = onlyMaracaibo(facilities);
+  }
+  return maracaibo;
+}
+
+export const listFacilities = async (_req: Request, res: Response) => {
+  const maracaibo = await loadMaracaiboFacilities();
+  res.json(maracaibo.map(toApiDoc));
 };
 
 export const listLaboratories = async (_req: Request, res: Response) => {
@@ -73,6 +87,14 @@ export const listDoctors = async (req: Request, res: Response) => {
 };
 
 export const listMapPois = async (_req: Request, res: Response) => {
+  let facilitiesProbe = await prisma.medicalFacility.findMany({
+    where: { isActive: true, serviceEnabled: true },
+    select: { latitude: true, longitude: true },
+  });
+  if (onlyMaracaibo(facilitiesProbe).length === 0) {
+    await ensureMaracaiboCatalog();
+  }
+
   const [facilities, laboratories, pharmacies, ambulances] = await Promise.all([
     prisma.medicalFacility.findMany({
       where: { isActive: true, serviceEnabled: true },

@@ -150,6 +150,29 @@ const LABS = [
   },
 ];
 
+/** Asegura clínicas Maracaibo en DB y oculta sedes fuera de la ciudad. */
+export async function ensureMaracaiboCatalog(): Promise<void> {
+  await syncMaracaiboPlaces();
+
+  const all = await prisma.medicalFacility.findMany({
+    select: { id: true, latitude: true, longitude: true },
+  });
+  const outsideIds = all
+    .filter(
+      (f) =>
+        f.latitude == null ||
+        f.longitude == null ||
+        !inMaracaibo(f.latitude, f.longitude),
+    )
+    .map((f) => f.id);
+  if (outsideIds.length > 0) {
+    await prisma.medicalFacility.updateMany({
+      where: { id: { in: outsideIds } },
+      data: { isActive: false, serviceEnabled: false },
+    });
+  }
+}
+
 export async function syncMaracaiboPlaces(): Promise<void> {
   for (const place of FACILITIES) {
     const data = {
@@ -176,24 +199,36 @@ export async function syncMaracaiboPlaces(): Promise<void> {
     }
   }
   for (const place of PHARMACIES) {
-    await prisma.pharmacy.updateMany({
+    const data = {
+      address: place.address,
+      latitude: place.latitude,
+      longitude: place.longitude,
+      isActive: true,
+      serviceEnabled: true,
+    };
+    const updated = await prisma.pharmacy.updateMany({
       where: { name: place.name },
-      data: {
-        address: place.address,
-        latitude: place.latitude,
-        longitude: place.longitude,
-      },
+      data,
     });
+    if (updated.count === 0) {
+      await prisma.pharmacy.create({ data: { name: place.name, ...data } });
+    }
   }
   for (const place of LABS) {
-    await prisma.laboratory.updateMany({
+    const data = {
+      address: place.address,
+      latitude: place.latitude,
+      longitude: place.longitude,
+      isActive: true,
+      serviceEnabled: true,
+    };
+    const updated = await prisma.laboratory.updateMany({
       where: { name: place.name },
-      data: {
-        address: place.address,
-        latitude: place.latitude,
-        longitude: place.longitude,
-      },
+      data,
     });
+    if (updated.count === 0) {
+      await prisma.laboratory.create({ data: { name: place.name, ...data } });
+    }
   }
 
   const hum = FACILITIES[0];
