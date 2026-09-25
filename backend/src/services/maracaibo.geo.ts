@@ -17,6 +17,47 @@ export function inMaracaibo(lat: number, lng: number): boolean {
   );
 }
 
+type GeoPlace = {
+  city?: string | null;
+  address?: string | null;
+  latitude: number | null;
+  longitude: number | null;
+};
+
+/** Clínicas que tú cargaste con city/address Maracaibo o coords en el área. */
+export function isMaracaiboPlace(row: GeoPlace): boolean {
+  if (row.latitude == null || row.longitude == null) return false;
+  const text = `${row.city ?? ''} ${row.address ?? ''}`.toLowerCase();
+  if (text.includes('maracaibo') || text.includes('zulia')) return true;
+  return inMaracaibo(row.latitude, row.longitude);
+}
+
+/** Reactiva y marca urgencias las sedes que ya existen en Maracaibo (Neon / admin). */
+export async function activateMaracaiboFacilitiesFromDb(): Promise<number> {
+  const candidates = await prisma.medicalFacility.findMany({
+    where: {
+      OR: [
+        { city: { contains: 'Maracaibo', mode: 'insensitive' } },
+        { city: { contains: 'maracaibo', mode: 'insensitive' } },
+        { address: { contains: 'Maracaibo', mode: 'insensitive' } },
+        { address: { contains: 'maracaibo', mode: 'insensitive' } },
+      ],
+    },
+  });
+  const ids = candidates.filter(isMaracaiboPlace).map((f) => f.id);
+  if (ids.length === 0) return 0;
+  const result = await prisma.medicalFacility.updateMany({
+    where: { id: { in: ids } },
+    data: {
+      isActive: true,
+      serviceEnabled: true,
+      hasEmergencyRoom: true,
+      city: 'Maracaibo',
+    },
+  });
+  return result.count;
+}
+
 export type DrivingLeg = { km: number; etaMinutes: number };
 
 type CacheEntry = DrivingLeg & { at: number; key: string };
@@ -152,19 +193,13 @@ const LABS = [
 
 /** Asegura clínicas Maracaibo en DB y oculta sedes fuera de la ciudad. */
 export async function ensureMaracaiboCatalog(): Promise<void> {
+  await activateMaracaiboFacilitiesFromDb();
   await syncMaracaiboPlaces();
 
   const all = await prisma.medicalFacility.findMany({
-    select: { id: true, latitude: true, longitude: true },
+    select: { id: true, city: true, address: true, latitude: true, longitude: true },
   });
-  const outsideIds = all
-    .filter(
-      (f) =>
-        f.latitude == null ||
-        f.longitude == null ||
-        !inMaracaibo(f.latitude, f.longitude),
-    )
-    .map((f) => f.id);
+  const outsideIds = all.filter((f) => !isMaracaiboPlace(f)).map((f) => f.id);
   if (outsideIds.length > 0) {
     await prisma.medicalFacility.updateMany({
       where: { id: { in: outsideIds } },

@@ -5,17 +5,22 @@ import { getAvailableSlots } from '../services/slots.service';
 import { getDoctorConsultationDuration } from '../services/doctorDuration.service';
 import { doctorProfileInclude, mapDoctorProfile } from '../utils/prismaMappers';
 import { omitPassword, toApiDoc } from '../utils/apiDoc';
-import { ensureMaracaiboCatalog, inMaracaibo } from '../services/maracaibo.geo';
+import {
+  activateMaracaiboFacilitiesFromDb,
+  ensureMaracaiboCatalog,
+  inMaracaibo,
+  isMaracaiboPlace,
+} from '../services/maracaibo.geo';
 
-function onlyMaracaibo<T extends { latitude: number | null; longitude: number | null }>(
-  rows: T[],
-): T[] {
-  return rows.filter(
-    (row) =>
-      row.latitude != null &&
-      row.longitude != null &&
-      inMaracaibo(row.latitude, row.longitude),
-  );
+function onlyMaracaibo<
+  T extends {
+    city?: string | null;
+    address?: string | null;
+    latitude: number | null;
+    longitude: number | null;
+  },
+>(rows: T[]): T[] {
+  return rows.filter(isMaracaiboPlace);
 }
 
 export const listSpecialties = async (_req: Request, res: Response) => {
@@ -24,6 +29,7 @@ export const listSpecialties = async (_req: Request, res: Response) => {
 };
 
 async function loadMaracaiboFacilities() {
+  await activateMaracaiboFacilitiesFromDb();
   let facilities = await prisma.medicalFacility.findMany({
     where: { isActive: true, serviceEnabled: true },
     orderBy: { name: 'asc' },
