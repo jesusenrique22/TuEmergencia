@@ -5,6 +5,18 @@ import { getAvailableSlots } from '../services/slots.service';
 import { getDoctorConsultationDuration } from '../services/doctorDuration.service';
 import { doctorProfileInclude, mapDoctorProfile } from '../utils/prismaMappers';
 import { omitPassword, toApiDoc } from '../utils/apiDoc';
+import { inMaracaibo } from '../services/maracaibo.geo';
+
+function onlyMaracaibo<T extends { latitude: number | null; longitude: number | null }>(
+  rows: T[],
+): T[] {
+  return rows.filter(
+    (row) =>
+      row.latitude != null &&
+      row.longitude != null &&
+      inMaracaibo(row.latitude, row.longitude),
+  );
+}
 
 export const listSpecialties = async (_req: Request, res: Response) => {
   const specialties = await prisma.specialty.findMany({ orderBy: { name: 'asc' } });
@@ -16,7 +28,7 @@ export const listFacilities = async (_req: Request, res: Response) => {
     where: { isActive: true, serviceEnabled: true },
     orderBy: { name: 'asc' },
   });
-  res.json(facilities.map(toApiDoc));
+  res.json(onlyMaracaibo(facilities).map(toApiDoc));
 };
 
 export const listLaboratories = async (_req: Request, res: Response) => {
@@ -25,7 +37,7 @@ export const listLaboratories = async (_req: Request, res: Response) => {
     include: { services: true },
     orderBy: { name: 'asc' },
   });
-  res.json(laboratories.map(toApiDoc));
+  res.json(onlyMaracaibo(laboratories).map(toApiDoc));
 };
 
 export const listDoctors = async (req: Request, res: Response) => {
@@ -116,19 +128,26 @@ export const listMapPois = async (_req: Request, res: Response) => {
   ]);
 
   res.json({
-    facilities: facilities.map((f) => ({
+    facilities: onlyMaracaibo(facilities).map((f) => ({
       ...toApiDoc(f),
       poiType: 'CLINIC',
     })),
-    laboratories: laboratories.map((l) => ({
+    laboratories: onlyMaracaibo(laboratories).map((l) => ({
       ...toApiDoc(l),
       poiType: 'LABORATORY',
     })),
-    pharmacies: pharmacies.map((p) => ({
+    pharmacies: onlyMaracaibo(pharmacies).map((p) => ({
       ...toApiDoc(p),
       poiType: 'PHARMACY',
     })),
-    ambulances: ambulances.map((a) => ({
+    ambulances: ambulances
+      .filter(
+        (a) =>
+          a.latitude != null &&
+          a.longitude != null &&
+          inMaracaibo(a.latitude, a.longitude),
+      )
+      .map((a) => ({
       id: a.id,
       name: a.callSign ?? a.plateNumber,
       plateNumber: a.plateNumber,
